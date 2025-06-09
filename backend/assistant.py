@@ -6,6 +6,8 @@ import torch
 import logging
 from time import time
 import asyncio
+from gtts import gTTS
+import io
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -116,6 +118,14 @@ class VoiceAssistant:
         except Exception as e:
             logger.exception(f"❌ Error while closing audio resources: {e}")
 
+
+    def text_to_speech(self, text, lang='en'):
+        tts = gTTS(text=text, lang=lang)
+        audio_bytes = io.BytesIO()
+        tts.write_to_fp(audio_bytes)
+        audio_bytes.seek(0)
+        return audio_bytes  
+
     # Async wrappers
     async def detect_wake_word(self):
         logger.info("🌀 Awaiting wake word (async)...")
@@ -133,3 +143,6 @@ class VoiceAssistant:
 
     async def async_transcribe_command(self, audio):
         return await asyncio.to_thread(self.transcribe_command, audio)
+    
+    async def async_text_to_speech(self, text):
+        return await asyncio.to_thread(self.text_to_speech, text)

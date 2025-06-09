@@ -100,9 +100,12 @@ async def handle_user_command(user_input: str):
         fn_name = command['function']
         args = command['args']
         run_at = command['scheduled_for']
-        
+
+        action = args['action']
+        room = args['room'] if 'room' in args else ""    
+
         await schedule_task(fn_name, run_at, kwargs=args)
-        scheduled.append((fn_name, run_at))
+        scheduled.append((fn_name, run_at, action, room))
         logger.info(f"📅 Scheduled: {fn_name} at {run_at} with args={args}")
 
     return scheduled
