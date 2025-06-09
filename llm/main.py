@@ -58,7 +58,7 @@ async def main():
     print("📡 Async scheduler running...")
 
     # Example user commands
-    print(await handle_user_command("If football news exists, turn on the TV in 1 hour and turn on kitchen lamp now."))
+    print(await handle_user_command("If Elcasico between Real and Barca exists, turn on the TV in 1 minutes and i have another task also turn on kitchen lamp in 30 seconds."))
     print(await handle_user_command("Turn on the AC in room1 if temperature is over 30 now"))
 
     while True:

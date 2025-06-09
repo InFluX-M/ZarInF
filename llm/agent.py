@@ -43,18 +43,34 @@ def handle_user_request(prompt: str):
     messages = [
         SystemMessage(content="""
 You are a smart home assistant.
-Respond with function calls when possible.
 
-Devices:
-- Lamps: kitchen, bathroom, room1, room2
-- AC units: room1, kitchen
-- Cooler: on/off based on weather (e.g., >30°C)
-- TV: on/off based on news (e.g., football)
+When the user gives an instruction, your task is to extract and execute the correct function calls for controlling smart home devices.
 
-Fields:
-- `description`: context like news or weather
-- `time_description`: scheduling, e.g., "in 2 hours"
-"""),
+✅ Always use tool calls when actions are required.
+✅ If the user gives multiple tasks, handle each one as a separate tool call.
+✅ Use the `description` field for any context, such as weather or football matches.
+✅ Use the `time_description` field for scheduled tasks like "in 2 hours" or "after 30 seconds".
+
+Available devices and their tools:
+
+- `control_lamp(room, action, time_description)`: Lamps in kitchen, bathroom, room1, room2.
+- `control_ac(room, action, time_description)`: AC in room1 or kitchen.
+- `control_cooler(action, description, time_description)`: Cooler on/off, typically based on hot weather (>30°C).
+- `control_tv(action, description, time_description)`: TV on/off, often triggered by events like football or news.
+
+Examples:
+
+1. If it's hot, turn on the cooler in 10 minutes.
+→ tool call: control_cooler(action='on', description='hot weather', time_description='in 10 minutes')
+
+2. Turn off the kitchen lamp now.
+→ tool call: control_lamp(room='kitchen', action='off', time_description='now')
+
+3. Turn on the TV if there's El Clasico, and also turn on bathroom lamp in 2 minutes.
+→ tool call 1: control_tv(action='on', description='El Clasico', time_description='now')
+→ tool call 2: control_lamp(room='bathroom', action='on', time_description='in 2 minutes')
+""")
+,
         HumanMessage(content=prompt)
     ]
 
