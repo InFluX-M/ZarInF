@@ -5,6 +5,7 @@ from langchain_openai import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 from langchain.tools import tool
 import dateparser
+from conditional_agent import handle_condition
 
 def parse_time_description(text: str, base: datetime = None) -> datetime | None:
     return dateparser.parse(text, settings={"PREFER_DATES_FROM": "future", "RELATIVE_BASE": base or datetime.now()})
@@ -37,11 +38,6 @@ llm = ChatOpenAI(
 
 tools = [control_tv, control_cooler, control_ac, control_lamp]
 chat_with_tools = llm.bind_tools(tools)
-
-# Dummy logic to simulate weather/news logic
-
-def handle_condition(description: str) -> bool:
-    return any(keyword in description.lower() for keyword in ["hot", "football", "news", "weather", "30", "sunny"])
 
 def handle_user_request(prompt: str):
     messages = [
