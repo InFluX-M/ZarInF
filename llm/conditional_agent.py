@@ -54,7 +54,3 @@ def handle_condition(description: str) -> bool:
     news = get_similar(description, vector_store)
     weather = fetch_weather(os.getenv("OPENWEATHER_API_KEY"))
     return evaluate_condition(description, news, weather)
-
-if __name__ == "__main__":
-    desc = "if football news exists or if average temperature in next 6 hours > 30°C"
-    print("✅ Condition Satisfied?" if handle_condition(desc) else "❌ Condition Not Met.")

@@ -1,10 +1,10 @@
+# --- agent.py ---
 import os
 from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 from langchain.tools import tool
 import dateparser
-from conditional_agent import handle_condition
 
 def parse_time_description(text: str, base: datetime = None) -> datetime | None:
     return dateparser.parse(text, settings={"PREFER_DATES_FROM": "future", "RELATIVE_BASE": base or datetime.now()})
@@ -12,22 +12,22 @@ def parse_time_description(text: str, base: datetime = None) -> datetime | None:
 @tool
 def control_tv(action: str, description: str = "", time_description: str = ""):
     """Turn on/off the TV with optional context like football news or weather."""
-    return f"TV will be turned {action}. Reason: {description}. Time: {time_description}"
+    print(f"✅ TV will be turned {action}. Reason: {description}. Time: {time_description}")
 
 @tool
 def control_cooler(action: str, description: str = "", time_description: str = ""):
     """Turn on/off the cooler based on weather logic."""
-    return f"Cooler will be turned {action}. Condition: {description}. Time: {time_description}"
+    print(f"✅ Cooler will be turned {action}. Condition: {description}. Time: {time_description}")
 
 @tool
 def control_ac(room: str, action: str, time_description: str = ""):
     """Turn on/off the AC in a room."""
-    return f"AC in {room} will be turned {action}. Time: {time_description}"
+    print(f"✅ AC in {room} will be turned {action}. Time: {time_description}")
 
 @tool
 def control_lamp(room: str, action: str, time_description: str = ""):
     """Turn on/off the lamp in a room."""
-    return f"Lamp in {room} will be turned {action}. Time: {time_description}"
+    print(f"✅ Lamp in {room} will be turned {action}. Time: {time_description}")
 
 llm = ChatOpenAI(
     model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
@@ -37,6 +37,11 @@ llm = ChatOpenAI(
 
 tools = [control_tv, control_cooler, control_ac, control_lamp]
 chat_with_tools = llm.bind_tools(tools)
+
+# Dummy logic to simulate weather/news logic
+
+def handle_condition(description: str) -> bool:
+    return any(keyword in description.lower() for keyword in ["hot", "football", "news", "weather", "30", "sunny"])
 
 def handle_user_request(prompt: str):
     messages = [
@@ -71,25 +76,8 @@ Fields:
             condition_met = handle_condition(desc)
 
         if fn_name in {"control_tv", "control_cooler"} and not condition_met:
-            continue  # Skip if condition not satisfied
+            continue
 
-        fn_map = {
-            "control_tv": control_tv,
-            "control_cooler": control_cooler,
-            "control_ac": control_ac,
-            "control_lamp": control_lamp,
-        }
-
-        fn = fn_map.get(fn_name)
-        if fn:
-            actions.append((fn, args, time))
+        actions.append((fn_name, args, time))
 
     return actions
-
-def main():
-    prompt = "If there’s football news, turn on the TV in 1 hour and also i want turn on kitchen lamp now."
-    for fn, args, time in handle_user_request(prompt):
-        print(f"✅ Scheduled: {fn.name} with args {args} at {time}")
-
-if __name__ == "__main__":
-    main()
