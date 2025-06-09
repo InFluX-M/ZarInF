@@ -3,6 +3,9 @@ import pickle
 import logging
 from datetime import datetime
 
+from dotenv import load_dotenv
+load_dotenv()
+
 DB_PATH = "async_task_queue.db"
 
 # --- Setup Logging ---

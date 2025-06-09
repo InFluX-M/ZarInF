@@ -10,6 +10,9 @@ from langchain.tools import tool
 
 from conditional_agent import handle_condition
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Setup logger
 logging.basicConfig(
     level=logging.INFO,

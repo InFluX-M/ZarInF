@@ -9,6 +9,9 @@ from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from newsapi import NewsApiClient
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Setup logger
 logging.basicConfig(
     level=logging.INFO,

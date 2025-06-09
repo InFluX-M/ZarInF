@@ -6,6 +6,8 @@ from agent import control_tv, control_cooler, control_ac, control_lamp, handle_u
 from task_db import ScheduledTaskDBItem, get_due_tasks, delete_task, add_task, init_db, set_device_status, get_device_status
 from assistant import VoiceAssistant
 import aiosqlite
+from dotenv import load_dotenv
+load_dotenv()
 
 # --- Setup Logging ---
 logging.basicConfig(

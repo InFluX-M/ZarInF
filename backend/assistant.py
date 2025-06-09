@@ -7,6 +7,9 @@ import logging
 from time import time
 import asyncio
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # --- Logging setup ---
 logging.basicConfig(
     level=logging.INFO,
@@ -21,6 +24,7 @@ logger = logging.getLogger(__name__)
 class VoiceAssistant:
     def __init__(self, access_key, keyword_paths, vad_model_name='silero_vad', whisper_model_name="base"):
         logger.info("🔧 Initializing VoiceAssistant...")
+        print(keyword_paths)
         try:
             self.porcupine = pvporcupine.create(
                 access_key=access_key,
