@@ -193,5 +193,10 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-
+# databases
+#  Ignore SQLite database files and other database-related files.
+*.sqlite
+*.sqlite3
 *.db
+*.db3
+./llm/*.db
