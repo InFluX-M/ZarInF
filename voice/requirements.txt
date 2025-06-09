@@ -1,5 +1,0 @@
-pvporcupine
-pyaudio
-numpy
-torch
-whisper

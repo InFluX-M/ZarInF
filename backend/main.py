@@ -1,100 +1,66 @@
 import asyncio
-from datetime import datetime
-from agent import control_tv, control_cooler, control_ac, control_lamp, handle_user_request
-from task_db import ScheduledTaskDBItem, get_due_tasks, delete_task, add_task, init_db
-from assistant import VoiceAssistant
 import os
+import logging
+from fastapi import FastAPI, UploadFile, File
+from scheduler import handle_user_command, schedule_task, init_db, scheduler_loop
+from assistant import VoiceAssistant
+from scheduler import get_all_device_statuses
 
-FUNCTION_MAP = {
-    "control_tv": control_tv,
-    "control_cooler": control_cooler,
-    "control_ac": control_ac,
-    "control_lamp": control_lamp,
-}
+# --- Setup Logging ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("log/assistant.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
-class ScheduledTask:
-    def __init__(self, db_item: ScheduledTaskDBItem):
-        self.db_item = db_item
+app = FastAPI()
+assistant = VoiceAssistant(os.getenv("ACCESS_KEY"), os.getenv("KEYWORD_PATHS"))
 
-    async def run(self):
-        func = FUNCTION_MAP.get(self.db_item.function_name)
-        if not func:
-            print(f"❌ Unknown function name: {self.db_item.function_name}")
-            return
-
-        if hasattr(func, "ainvoke"):
-            await func.ainvoke(self.db_item.kwargs)
-        else:
-            result = func(*self.db_item.args, **self.db_item.kwargs)
-            if asyncio.iscoroutine(result):
-                await result
-
-async def scheduler_loop():
-    while True:
-        due_db_tasks = await get_due_tasks()
-        for db_task in due_db_tasks:
-            task = ScheduledTask(db_task)
-            try:
-                await task.run()
-            except Exception as e:
-                print(f"❌ Error running task {db_task.id}: {e}")
-            await delete_task(db_task.id)
-        await asyncio.sleep(1)
-
-async def schedule_task(function_name: str, run_at: datetime, args=None, kwargs=None):
-    await add_task(function_name, run_at, args=args, kwargs=kwargs)
-
-async def handle_user_command(user_input: str):
-    commands = handle_user_request(user_input)
-    scheduled = []
-
-    for fn_name, args, run_at in commands:
-        await schedule_task(fn_name, run_at, kwargs=args)
-        scheduled.append((fn_name, run_at))
-
-    return scheduled
-
-async def async_listen_for_command(assistant: VoiceAssistant):
-    print("Listening for wake word...")
-    # Run sync/blocking methods in a thread to avoid blocking the event loop
-    detected = await asyncio.to_thread(assistant.listen_for_wake_word)
-    if detected:
-        print("Wake word detected! Listening for command...")
-        audio = await asyncio.to_thread(assistant.listen_for_command)
-        command = await asyncio.to_thread(assistant.transcribe_command, audio)
-        print(f"Command: {command}")
-        return command
-    return None
-
-async def main():
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Starting up: initializing DB and scheduler loop.")
     await init_db()
     asyncio.create_task(scheduler_loop())
-    print("📡 Scheduler running...")
+    logger.info("📡 Scheduler & FastAPI running...")
 
-    assistant = VoiceAssistant(os.getenv("ACCESS_KEY"), os.getenv("KEYWORD_PATHS"))
+@app.post("/upload-audio/")
+async def upload_audio(file: UploadFile = File(...)):
+    logger.info(f"Received audio upload: {file.filename}")
+    contents = await file.read()
+    audio_path = f"temp/{file.filename}"
+    os.makedirs("temp", exist_ok=True)
 
-    try:
-        while True:
-            print("👂 Listening for wake word...")
-            await assistant.detect_wake_word()
-            print("🎤 Wake word detected!")
+    with open(audio_path, "wb") as f:
+        f.write(contents)
+    logger.info(f"Saved uploaded audio to: {audio_path}")
 
-            audio = await assistant.async_listen_for_command()
-            command = await assistant.async_transcribe_command(audio)
-            print(f"🧠 Command: {command}")
+    detected = await asyncio.to_thread(assistant.detect_wake_word, audio_path)
+    logger.info(f"Wake word detection result: {detected}")
 
-            await handle_user_command(command)
+    if not detected:
+        return {"status": "no wake word detected"}
 
-            if "bye" in command.lower():
-                print("👋 Exiting...")
-                break
+    command = await asyncio.to_thread(assistant.transcribe_command, audio_path)
+    logger.info(f"Transcribed command: {command}")
 
-            await asyncio.sleep(0.1)
+    scheduled = await handle_user_command(command)
+    logger.info(f"Scheduled tasks: {scheduled}")
 
-    except KeyboardInterrupt:
-        print("🛑 Interrupted by user.")
-    finally:
-        assistant.close()
+    return {"command": command, "scheduled_tasks": scheduled}
 
-if __name__ == "__main__":
-    asyncio.run(main())
+@app.post("/send-command/")
+async def send_command(command: str):
+    logger.info(f"Received text command: {command}")
+    scheduled = await handle_user_command(command)
+    logger.info(f"Scheduled tasks: {scheduled}")
+    return {"scheduled_tasks": scheduled}
+
+@app.get("/device-statuses/")
+async def device_statuses():
+    statuses = await get_all_device_statuses()
+    logger.info(f"Fetched all device statuses: {statuses}")
+    return statuses
