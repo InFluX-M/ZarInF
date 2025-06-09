@@ -23,3 +23,10 @@ pytest==8.2.0
 
 # Optional: Async HTTP or enhanced agent support
 httpx==0.27.0
+
+sentence-transformers
+newsapi-python
+langchain
+faiss-cpu
+openai
+langchain_huggingface

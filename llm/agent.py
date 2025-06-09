@@ -4,6 +4,7 @@ from langchain.schema import SystemMessage, HumanMessage
 from langchain.tools import tool
 import dateparser
 from datetime import datetime
+from conditional_agent import handle_conditional_description
 
 def parse_time_description(text: str, base: datetime = None) -> datetime | None:
     base = base or datetime.now()
@@ -61,32 +62,28 @@ def handle_user_request(prompt: str):
     response = chat_with_tools.invoke(messages)
 
     functions = []
-    if response.tool_calls:
-        for call in response.tool_calls:
-            function_name = call["name"]
-            arguments = call["args"]
 
-            if arguments['time_description']:
-                datetime_prompt = parse_time_description(arguments['time_description']) or datetime.now()
+    for call in response.tool_calls:
+        function_name = call["name"]
+        arguments = call["args"]
 
-            if arguments['description']:
-                pass
+        if arguments['time_description']:
+            datetime_prompt = parse_time_description(arguments['time_description']) or datetime.now()
 
-            match function_name:
-                case "control_tv":
+        if arguments['description']:
+            satisfied = handle_conditional_description(arguments['description'])
+
+        match function_name:
+            case "control_tv":
+                if satisfied:
                     functions.append(control_tv, arguments, datetime_prompt)
-                case "control_cooler":
+            case "control_cooler":
+                if satisfied:
                     functions.append(control_cooler, arguments, datetime_prompt)
-                case "control_ac":
-                    functions.append(control_ac, arguments, datetime_prompt)
-                case "control_lamp":
-                    functions.append(control_lamp, arguments, datetime_prompt)
-                case _:
-                    result = f"Unknown function: {function_name}"
-            
-    else:
-        pass
-        #feedbacks.append("🤖 Assistant replied (no tool calls):", response.content)
+            case "control_ac":
+                functions.append(control_ac, arguments, datetime_prompt)
+            case "control_lamp":
+                functions.append(control_lamp, arguments, datetime_prompt)            
     
     return functions
 
