@@ -4,6 +4,11 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Mic, Send, Volume2 } from 'lucide-react';
 import { MicVAD } from '@ricky0123/vad-web';
+import { usePorcupine } from '@picovoice/porcupine-react'; // Import the hook
+
+// Import the Porcupine model parameters from your porcupine_params.js file
+import { porcupineModel } from './porcupine_params'; // Make sure the path is correct
+import { HeyAssistantKeywordModel } from './hey_assistant'; // Make sure the path is correct
 
 interface CommandInterfaceProps {
   translations: { placeholder: string; listening: string };
@@ -31,35 +36,69 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
   const [assistantStatus, setAssistantStatus] = useState<AssistantStatus>('idle');
   const [volume, setVolume] = useState(0);
   const vadRef = useRef<MicVAD | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null); // Corrected initialization
   const animationFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [showCircles, setShowCircles] = useState(false); // New state for showing circles
+
+  // Porcupine setup
+  const {
+    keywordDetection,
+    isLoaded,
+    isListening,
+    error,
+    init: porcupineInit,
+    start: porcupineStart,
+    stop: porcupineStop,
+    release: porcupineRelease,
+  } = usePorcupine();
 
   useEffect(() => {
-    const initVAD = async () => {
+    const init = async () => {
       try {
+        // Initialize VAD first to get the stream
         const vad = await MicVAD.new({
           onSpeechStart: () => setAssistantStatus('listeningForCommand'),
           onSpeechEnd: () => setAssistantStatus('idle'),
-          startOnLoad: true,
+          startOnLoad: true, // Automatically start listening for speech
         });
         vadRef.current = vad;
         startVisualizer(vad.stream);
         streamRef.current = vad.stream;
+
+        // Initialize Porcupine with your Access Key, keyword, and model
+        await porcupineInit(
+          'YOUR_ACCESS_KEY', // <-- Very important: Replace with your actual Picovoice Access Key!
+          { base64: HeyAssistantKeywordModel, label: 'Hey Assistant' }, // Your keyword data (label should match your keyword)
+          { base64: porcupineModel } // Your Porcupine model data
+        );
+        await porcupineStart(); // Start Porcupine after successful initialization
+
       } catch (error) {
-        console.error("❌ Error initializing VAD:", error);
+        console.error("❌ Error initializing VAD or Porcupine:", error);
         setAssistantStatus('error');
       }
     };
 
-    initVAD();
+    init();
 
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       vadRef.current?.pause();
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      porcupineRelease(); // Release Porcupine resources when component unmounts
     };
-  }, []);
+  }, []); // Empty dependency array means this effect runs once on mount
+
+  // Effect to handle keyword detection
+  useEffect(() => {
+     if (keywordDetection !== null) {
+       console.log('Keyword Detected:', keywordDetection.label);
+       setShowCircles(true); // Show circles when keyword is detected
+       // Hide circles after a short duration (e.g., 2 seconds)
+       setTimeout(() => setShowCircles(false), 2000);
+     }
+   }, [keywordDetection]); // Rerun this effect when keywordDetection changes
 
   const startVisualizer = (stream: MediaStream) => {
     const ctx = new AudioContext();
@@ -118,7 +157,8 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
     return (
       <div className="relative w-28 h-28 flex items-center justify-center">
         <div className="absolute inset-0 flex items-center justify-center z-0">
-          <VoiceVisualizer volume={volume} />
+          {/* Pass showCircles prop to conditionally render circles */}
+          <VoiceVisualizer volume={volume} showCircles={showCircles} />
         </div>
         <Button
           type="button"
@@ -180,22 +220,24 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
 };
 
 // 🎨 Visualizer Component
-const VoiceVisualizer: React.FC<{ volume: number }> = ({ volume }) => {
+const VoiceVisualizer: React.FC<{ volume: number; showCircles: boolean }> = ({ volume, showCircles }) => {
   const scales = [1.0, 1.5, 2.0].map((base) => base + volume / 40);
 
   return (
     <div className="relative flex items-center justify-center">
-      {scales.map((scale, i) => (
-        <div
-          key={i}
-          className="absolute rounded-full border-2 border-blue-400 transition-all duration-100 ease-out"
-          style={{
-            width: `${scale * 40}px`,
-            height: `${scale * 40}px`,
-            opacity: 0.3 + i * 0.2,
-          }}
-        />
-      ))}
+      {/* Conditionally render circles based on showCircles prop */}
+      {showCircles &&
+        scales.map((scale, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full border-2 border-blue-400 transition-all duration-100 ease-out"
+            style={{
+              width: `${scale * 40}px`,
+              height: `${scale * 40}px`,
+              opacity: 0.3 + i * 0.2,
+            }}
+          />
+        ))}
     </div>
   );
 };
