@@ -1,19 +1,21 @@
+// src/components/CommandInterface.tsx
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Mic, Send, Volume2 } from 'lucide-react';
-import { PorcupineWorker } from '@picovoice/porcupine-web';
-import { MicVAD } from '@ricky0123/vad-web';
+import { PorcupineWorker } from '@picovoice/porcupine-web'; // Keep import
+import { MicVAD } from '@ricky0123/vad-web'; // Keep import
 
 interface CommandInterfaceProps {
   translations: { placeholder: string; listening: string; };
-  onCommand: (command: string) => void; // This will trigger text command handling in parent
-  response: string; // Assistant's text response
-  isLoading: boolean; // From parent for overall processing
+  onCommand: (command: string) => void;
+  response: string;
+  isLoading: boolean;
 }
 
-type AssistantStatus = 'idle' | 'initializing' | 'listeningForWakeWord' | 'listeningForCommand' | 'processing' | 'error' | 'playingResponse';
+type AssistantStatus = 'idle' | 'initializing' | 'listeningForWakeWord' | 'listeningForCommand' | 'processing' | 'error' | 'playingResponse' | 'voiceDisabled'; // Keep type
 
 export const CommandInterface: React.FC<CommandInterfaceProps> = ({
   translations,
@@ -22,135 +24,47 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
   isLoading,
 }) => {
   const [command, setCommand] = useState('');
-  const [assistantStatus, setAssistantStatus] = useState<AssistantStatus>('initializing');
+  const [assistantStatus, setAssistantStatus] = useState<AssistantStatus>('voiceDisabled'); // Set initial status to voiceDisabled
   
-  const porcupineWorkerRef = useRef<PorcupineWorker | null>(null);
-  const vadRef = useRef<MicVAD | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const porcupineWorkerRef = useRef<PorcupineWorker | null>(null); // Keep ref
+  const vadRef = useRef<MicVAD | null>(null); // Keep ref
+  const audioContextRef = useRef<AudioContext | null>(null); // Keep ref
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null); // Keep ref
 
   useEffect(() => {
-    // Initialize AudioContext
+    // Voice command functionality is currently disabled for future implementation.
+    // Initialize AudioContext if it doesn't exist, though it won't be used for input for now.
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
-
-    const initVoiceEngine = async () => {
-      try {
-        if (porcupineWorkerRef.current) {
-          porcupineWorkerRef.current.release();
-          porcupineWorkerRef.current = null;
-        }
-
-        porcupineWorkerRef.current = await PorcupineWorker.create(
-          'KjFJIHycu/LCghU3SFVYv1XzoC/KSW6mDxQWBmc4K8I+ktk6hKL6Mw==', // <-- Place your Picovoice AccessKey here
-          {
-            publicPath: '/hey_assistant.ppn', // <-- Your model file name in the public folder
-            sensitivity: 0.7,
-          },
-          (keywordDetection) => {
-            console.log(`Wake word detected: ${keywordDetection.label}`);
-            porcupineWorkerRef.current?.pause();
-            startVAD();
-          }
-        );
-        console.log("Porcupine initialized. Starting wake word listening.");
-        startListeningForWakeWord();
-      } catch (error) {
-        console.error('Failed to initialize Porcupine:', error);
-        setAssistantStatus('error');
-      }
-    };
-
-    initVoiceEngine();
-
+    console.log("Voice command initialization skipped. Voice input is currently disabled.");
+    // No voice engine initialization here. The status remains 'voiceDisabled'.
+    
     return () => {
-      porcupineWorkerRef.current?.release();
-      vadRef.current?.destroy();
+      // Clean up if audio context was created, though not directly used for voice input anymore
       audioSourceRef.current?.stop();
       audioContextRef.current?.close();
-      console.log("Voice engines released.");
+      console.log("Audio resources cleaned up.");
     };
-  }, []);
+  }, []); // Keep useEffect structure, but with simplified logic
 
   const startListeningForWakeWord = () => {
-    setAssistantStatus('listeningForWakeWord');
-    porcupineWorkerRef.current?.start();
+    console.log("Wake word listening is currently disabled.");
+    // setAssistantStatus('listeningForWakeWord'); // Placeholder, won't actually listen
   };
   
   const startVAD = async () => {
-    setAssistantStatus('listeningForCommand');
-    try {
-      if (vadRef.current) {
-        vadRef.current.destroy();
-      }
-      vadRef.current = await MicVAD.new({
-        onSpeechEnd: async (audio) => {
-          setAssistantStatus('processing');
-          vadRef.current?.destroy();
-          console.log("Speech ended, transcribing audio...");
-          const audioBlob = new Blob([audio], { type: 'audio/wav' });
-          await transcribeAudio(audioBlob);
-        },
-        onVADMisfire: () => {
-          console.log("VAD misfire, restarting wake word listener.");
-          startListeningForWakeWord();
-        },
-        stopOnAbsence: true,
-      });
-      vadRef.current.start();
-    } catch (error) {
-      console.error("VAD initialization failed:", error);
-      setAssistantStatus('error');
-      setTimeout(() => startListeningForWakeWord(), 2000);
-    }
+    console.log("VAD (Voice Activity Detection) is currently disabled.");
+    // setAssistantStatus('listeningForCommand'); // Placeholder, won't actually listen
   };
 
   const transcribeAudio = async (audioBlob: Blob) => {
-    const formData = new FormData();
-    formData.append('file', audioBlob, 'command.wav');
-    formData.append('response_type', 'voice'); // Request voice response from backend
-
-    try {
-      const res = await fetch('http://localhost:8000/upload-audio/', {
-        method: 'POST',
-        body: formData,
-      });
-      
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-
-      // If response is audio, play it directly
-      if (res.headers.get('Content-Type')?.includes('audio')) {
-        setAssistantStatus('playingResponse');
-        const audioArrayBuffer = await res.arrayBuffer();
-        await playAudio(audioArrayBuffer);
-        // After audio plays, go back to listening for wake word
-        startListeningForWakeWord();
-      } else {
-        // Otherwise, assume it's JSON with transcribed command and scheduled tasks
-        const { command: transcribedText, scheduled_tasks } = await res.json();
-        console.log("Transcribed text:", transcribedText);
-        console.log("Scheduled tasks:", scheduled_tasks);
-
-        if (transcribedText) {
-          setCommand(transcribedText);
-          onCommand(transcribedText); // Pass the transcribed text to the parent component's handler
-        } else {
-          onCommand(translations.placeholder);
-        }
-        startListeningForWakeWord(); // Listen for wake word after processing text response
-      }
-    } catch (error) {
-      console.error('Transcription/TTS request failed:', error);
-      onCommand(translations.placeholder);
-      setAssistantStatus('error');
-      setTimeout(() => startListeningForWakeWord(), 2000);
-    }
+    console.log("Audio transcription is currently disabled. Received audio blob:", audioBlob);
+    setAssistantStatus('voiceDisabled'); // Go back to disabled state
+    onCommand(translations.placeholder); // Still trigger onCommand with placeholder
   };
 
-  const playAudio = async (audioArrayBuffer: ArrayBuffer) => {
+  const playAudio = async (audioArrayBuffer: ArrayBuffer) => { // Keep this function
     if (!audioContextRef.current) return;
     try {
       const audioBuffer = await audioContextRef.current.decodeAudioData(audioArrayBuffer);
@@ -178,15 +92,16 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
     }
   };
 
-  const getMicButton = () => {
+  const getMicButton = () => { // Keep the function structure but simplify its logic
     const statusMap = {
-      idle: { text: "Initializing...", className: "bg-gray-400", disabled: true },
-      initializing: { text: "Initializing voice engine...", className: "bg-gray-400 animate-pulse", disabled: true },
-      listeningForWakeWord: { text: "Say 'Hey Assistant'", className: "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 hover:scale-110", disabled: false },
-      listeningForCommand: { text: translations.listening, className: "bg-red-500 hover:bg-red-600 animate-pulse", disabled: true },
-      processing: { text: "Processing...", className: "bg-yellow-500 hover:bg-yellow-600 animate-pulse", disabled: true },
+      idle: { text: "Voice Disabled", className: "bg-gray-400", disabled: true },
+      initializing: { text: "Voice Disabled", className: "bg-gray-400 animate-pulse", disabled: true },
+      listeningForWakeWord: { text: "Voice Disabled", className: "bg-gray-400", disabled: true },
+      listeningForCommand: { text: "Voice Disabled", className: "bg-gray-400", disabled: true },
+      processing: { text: "Voice Disabled", className: "bg-gray-400", disabled: true },
       playingResponse: { text: "Playing response...", className: "bg-green-500 animate-pulse", disabled: true },
-      error: { text: "Error! Please refresh.", className: "bg-gray-700", disabled: true },
+      error: { text: "Error! Voice Disabled.", className: "bg-gray-700", disabled: true },
+      voiceDisabled: { text: "Voice Commands Disabled", className: "bg-gray-400", disabled: true }, // New status
     };
     const currentStatus = statusMap[assistantStatus];
 
@@ -194,9 +109,8 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
       <div className="text-center">
         <Button
             type="button"
-            // Only allow manual re-start if idle/wake word listener failed
-            onClick={assistantStatus === 'listeningForWakeWord' ? () => porcupineWorkerRef.current?.start() : undefined}
-            disabled={currentStatus.disabled || isLoading} // Disable if overall assistant is busy
+            onClick={() => console.log("Voice command button clicked, but functionality is disabled.")} // Placeholder click handler
+            disabled={currentStatus.disabled || isLoading}
             className={`h-16 w-16 rounded-full transition-all duration-300 ${currentStatus.className}`}
         >
           <Mic className="w-6 h-6 text-white" />
@@ -206,15 +120,14 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
     );
   };
 
-  const handlePlayAssistantResponse = async () => {
-    // This button will play the *text* response from the assistant, if any
+  const handlePlayAssistantResponse = async () => { // Keep this function for playing text response
     if (response) {
       setAssistantStatus('playingResponse');
       try {
         const ttsResponse = await fetch('http://localhost:8000/send-command/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: response, response_type: "voice" }), // Use response as command for TTS
+          body: JSON.stringify({ command: response, response_type: "voice" }),
         });
 
         if (!ttsResponse.ok) {
@@ -226,7 +139,7 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
       } catch (error) {
         console.error("Error playing assistant response:", error);
       } finally {
-        startListeningForWakeWord(); // Go back to listening after playing
+        setAssistantStatus('voiceDisabled'); // Go back to disabled after playing
       }
     }
   };
@@ -240,13 +153,13 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
               value={command} onChange={(e) => setCommand(e.target.value)}
               placeholder={translations.placeholder}
               className="h-14 text-lg border-2 border-gray-200 focus:border-blue-400 rounded-xl bg-white/90"
-              disabled={isLoading} // Disable input if overall assistant is busy
+              disabled={isLoading}
             />
             <Button type="submit" size="lg" className="h-14 px-6 bg-blue-600 hover:bg-blue-700 rounded-xl" disabled={isLoading}>
               <Send className="w-5 h-5" />
             </Button>
           </div>
-          <div className="flex justify-center pt-4">{getMicButton()}</div>
+          <div className="flex justify-center pt-4">{getMicButton()}</div> {/* Keep the button's structure */}
         </form>
       </Card>
 
