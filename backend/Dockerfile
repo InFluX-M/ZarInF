@@ -1,5 +1,5 @@
 # Use official Python image
-FROM python:3.10-slim
+FROM docker.arvancloud.ir/python:3.10-slim
 
 # Install system dependencies needed for PyAudio and Whisper
 RUN apt-get update && apt-get install -y \
@@ -22,11 +22,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 RUN pip install python-multipart openai-whisper
 
+RUN python3 -c "import whisper; whisper.load_model('base')"
+
+RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+
 # Copy all backend code except excluded ones
 COPY . .
-
-# Remove frontend directory from inside container (just in case)
-RUN rm -rf frontend
 
 # Expose FastAPI port
 EXPOSE 8000
