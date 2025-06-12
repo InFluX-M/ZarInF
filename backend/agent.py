@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 from langchain.tools import tool
 
-from conditional_agent import handle_condition, fetch_headlines, fetch_weather
+from conditional_agent import handle_condition, fetch_headlines, fetch_weather, build_vector_store, get_similar
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -23,6 +23,9 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+_cached_headlines = []
+_cached_weather_report = ""
 
 # === Tool Definitions ===
 
@@ -46,6 +49,25 @@ def control_lamp(room: str, action: str, time_description: str = ""):
     """Turn on/off the lamp in a room."""
     logger.info(f"✅ Lamp in {room} will be turned {action}. Time: {time_description}")
 
+@tool
+def get_news(filter: str = "") -> list[str]:
+    """Return news headlines filtered by the given topic. Empty filter returns all."""
+    headlines = _cached_headlines
+    if filter:
+        vector_store = build_vector_store(headlines)
+        relevant_news = get_similar(filter, vector_store)
+        logger.info(f"Filtered news by '{filter}': {relevant_news}")
+        return relevant_news
+    else:
+        logger.info(f"Returning all news headlines")
+        return headlines
+
+@tool
+def get_weather(description: str = "") -> str:
+    """Return weather info matching the description query."""
+    weather_report = _cached_weather_report
+    logger.info(f"Fetching weather info for description: '{description}'")
+
 # === Tool Map and Required Args ===
 
 TOOL_MAP = {
@@ -53,6 +75,8 @@ TOOL_MAP = {
     "control_cooler": control_cooler,
     "control_ac": control_ac,
     "control_lamp": control_lamp,
+    "get_news": get_news,
+    "get_weather": get_weather
 }
 
 REQUIRED_ARGS = {
@@ -60,6 +84,8 @@ REQUIRED_ARGS = {
     "control_cooler": ["action"],
     "control_ac": ["room", "action"],
     "control_lamp": ["room", "action"],
+    "get_news": [], 
+    "get_weather": []
 }
 
 # === Time Parsing ===
@@ -92,15 +118,19 @@ chat_with_tools = llm.bind_tools(tools)
 # === Main User Request Handler ===
 
 def handle_user_request(prompt: str):
+    global _cached_headlines, _cached_weather_report
+
     messages = [
 SystemMessage(content="""
-You are a smart home assistant. Your job is to turn user commands into tool calls for smart devices.
+You are a smart home assistant. Your job is to turn user commands into tool calls for smart devices or info retrieval.
 
 Tools you can use:
 - control_lamp(room, action, time_description)
 - control_ac(room, action, time_description)
 - control_cooler(action, weather_description, news_description, time_description)
 - control_tv(action, weather_description, news_description, time_description)
+- get_news(filter)
+- get_weather(description)
 
 Rules:
 - Use one tool call per action.
@@ -124,6 +154,13 @@ Examples:
 
 5. If it's hot and there's a football match, turn on the cooler in 1 hour.
 → control_cooler(action='on', weather_description='hot', news_description='football match', time_description='in 1 hour')
+
+6. Get latest news about technology.
+→ get_news(filter='technology')
+
+7. Get avg weather in next 4 hours.
+→ get_weather(description='avg weather in next 4 hours')
+
 """),
         HumanMessage(content=prompt)
     ]
@@ -136,12 +173,12 @@ Examples:
     news_api_key = os.getenv("NEWS_API_KEY")
     weather_api_key = os.getenv("OPENWEATHER_API_KEY")
 
-    headlines = fetch_headlines(news_api_key)
-    if not headlines:
+    _cached_headlines = fetch_headlines(news_api_key)
+    if not _cached_headlines:
         logger.warning("No headlines fetched, condition may be inaccurate")
 
-    weather_report = fetch_weather(weather_api_key)
-    if weather_report == "No weather data available.":
+    _cached_weather_report = fetch_weather(weather_api_key)
+    if _cached_weather_report == "No weather data available.":
         logger.warning("Weather data unavailable, condition may be inaccurate")
 
     for call in response.tool_calls:
@@ -158,6 +195,18 @@ Examples:
             logger.warning(f"Missing required args for {fn_name}: {missing_args}. Skipping this call.")
             continue
 
+        if fn_name in ['get_news', 'get_weather']:
+            logger.info(f"Running {fn_name} immediately with args: {args}")
+            input_str = ""
+            if fn_name == "get_news":
+                input_str = args.get("filter", "")
+            elif fn_name == "get_weather":
+                input_str = args.get("description", "")
+
+            result = TOOL_MAP[fn_name].invoke(input_str)
+            logger.info(f"result {fn_name} immediately with args: {args} = {result}")
+            continue
+
         time_str = args.get("time_description", "")
         run_time = parse_time_description(time_str)
 
@@ -170,7 +219,7 @@ Examples:
 
         condition_met = [True, True]
         if fn_name in {"control_tv", "control_cooler"}:
-            condition_met = handle_condition(weather_desc, news_desc, headlines, weather_report)
+            condition_met = handle_condition(weather_desc, news_desc, _cached_headlines, _cached_weather_report)
             logger.info(f"Weather condition '{weather_desc}' evaluated to {condition_met[0]}")
             logger.info(f"News condition '{news_desc}' evaluated to {condition_met[1]}")
 
