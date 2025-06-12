@@ -4,6 +4,10 @@ import sounddevice as sd
 import struct
 import requests
 from audio_recorder_streamlit import audio_recorder
+import os
+
+from dotenv import load_dotenv
+load_dotenv()
 
 API_BASE = "http://localhost:8000"
 
@@ -18,8 +22,8 @@ if "wake_detected" not in st.session_state:
 # -----------------------
 def listen_for_wake_word():
     porcupine = pvporcupine.create(
-        keyword_paths=["/home/influx/Desktop/ZarInF/backend/keyword/Hey-Assistant_en_linux_v3_0_0.ppn"],
-        access_key="c75QhDZXN8bE+jTDwThAx28xhSpfXLx6vjjwpfmLRFvmpRINZ8Rqdg=="
+        keyword_paths=[os.getenv('KEYWORD_PATHS_WAKE_WORD')],
+        access_key=os.getenv('ACCESS_KEY_WAKE_WORD')
     )
     stream = sd.RawInputStream(
         samplerate=porcupine.sample_rate,

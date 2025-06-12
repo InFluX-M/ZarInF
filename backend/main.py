@@ -13,8 +13,6 @@ import torchaudio
 from scheduler import handle_user_command, schedule_task, init_db, scheduler_loop, get_all_device_statuses
 from assistant import VoiceAssistant
 
-load_dotenv()
-
 # --- Setup Logging ---
 logging.basicConfig(
     level=logging.INFO,
