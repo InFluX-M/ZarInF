@@ -2,29 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { Mic, Send, Volume2 } from 'lucide-react';
-import { MicVAD } from '@ricky0123/vad-web';
-import { usePorcupine } from '@picovoice/porcupine-react'; // Import the hook
-
-// Import the Porcupine model parameters from your porcupine_params.js file
-import { porcupineModel } from './porcupine_params'; // Make sure the path is correct
-import { HeyAssistantKeywordModel } from './hey_assistant'; // Make sure the path is correct
+import { Mic, Send, Volume2, Square } from 'lucide-react';
 
 interface CommandInterfaceProps {
-  translations: { placeholder: string; listening: string };
+  translations: { placeholder: string; listening: string; };
   onCommand: (command: string) => void;
   response: string;
   isLoading: boolean;
 }
 
-type AssistantStatus =
-  | 'idle'
-  | 'initializing'
-  | 'listeningForCommand'
-  | 'processing'
-  | 'playingResponse'
-  | 'error'
-  | 'voiceDisabled';
+type VoiceStatus = 'idle' | 'recording' | 'processing' | 'playingResponse' | 'error';
 
 export const CommandInterface: React.FC<CommandInterfaceProps> = ({
   translations,
@@ -33,92 +20,142 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
   isLoading,
 }) => {
   const [command, setCommand] = useState('');
-  const [assistantStatus, setAssistantStatus] = useState<AssistantStatus>('idle');
-  const [volume, setVolume] = useState(0);
-  const vadRef = useRef<MicVAD | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null); // Corrected initialization
-  const animationFrameRef = useRef<number | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [showCircles, setShowCircles] = useState(false); // New state for showing circles
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
+  
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Porcupine setup
-  const {
-    keywordDetection,
-    isLoaded,
-    isListening,
-    error,
-    init: porcupineInit,
-    start: porcupineStart,
-    stop: porcupineStop,
-    release: porcupineRelease,
-  } = usePorcupine();
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   useEffect(() => {
-    const init = async () => {
-      try {
-        // Initialize VAD first to get the stream
-        const vad = await MicVAD.new({
-          onSpeechStart: () => setAssistantStatus('listeningForCommand'),
-          onSpeechEnd: () => setAssistantStatus('idle'),
-          startOnLoad: true, // Automatically start listening for speech
-        });
-        vadRef.current = vad;
-        startVisualizer(vad.stream);
-        streamRef.current = vad.stream;
-
-        // Initialize Porcupine with your Access Key, keyword, and model
-        await porcupineInit(
-          'YOUR_ACCESS_KEY', // <-- Very important: Replace with your actual Picovoice Access Key!
-          { base64: HeyAssistantKeywordModel, label: 'Hey Assistant' }, // Your keyword data (label should match your keyword)
-          { base64: porcupineModel } // Your Porcupine model data
-        );
-        await porcupineStart(); // Start Porcupine after successful initialization
-
-      } catch (error) {
-        console.error("❌ Error initializing VAD or Porcupine:", error);
-        setAssistantStatus('error');
-      }
-    };
-
-    init();
+    // Initialize AudioContext
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
 
     return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      vadRef.current?.pause();
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      porcupineRelease(); // Release Porcupine resources when component unmounts
+      // Cleanup on unmount
+      mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
+      if (recordingTimeoutRef.current) {
+        clearTimeout(recordingTimeoutRef.current);
+      }
+      audioSourceRef.current?.stop();
+      audioContextRef.current?.close();
+      console.log("Audio resources released.");
     };
-  }, []); // Empty dependency array means this effect runs once on mount
+  }, []);
 
-  // Effect to handle keyword detection
-  useEffect(() => {
-     if (keywordDetection !== null) {
-       console.log('Keyword Detected:', keywordDetection.label);
-       setShowCircles(true); // Show circles when keyword is detected
-       // Hide circles after a short duration (e.g., 2 seconds)
-       setTimeout(() => setShowCircles(false), 2000);
-     }
-   }, [keywordDetection]); // Rerun this effect when keywordDetection changes
+  const transcribeAudio = async (audioBlob: Blob) => {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'command.wav');
+    formData.append('response_type', 'voice'); // Request voice response from backend
 
-  const startVisualizer = (stream: MediaStream) => {
-    const ctx = new AudioContext();
-    const src = ctx.createMediaStreamSource(stream);
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    src.connect(analyser);
-    analyserRef.current = analyser;
+    try {
+      setVoiceStatus('processing');
+      const res = await fetch('http://localhost:8000/upload-audio/', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
 
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      // If response is audio, play it directly
+      if (res.headers.get('Content-Type')?.includes('audio')) {
+        setVoiceStatus('playingResponse');
+        const audioArrayBuffer = await res.arrayBuffer();
+        await playAudio(audioArrayBuffer);
+        setVoiceStatus('idle'); // Go back to idle after audio plays
+      } else {
+        // Otherwise, assume it's JSON with transcribed command
+        const { command: transcribedText } = await res.json();
+        console.log("Transcribed text:", transcribedText);
 
-    const loop = () => {
-      analyser.getByteTimeDomainData(dataArray);
-      const rms = Math.sqrt(dataArray.reduce((sum, val) => sum + (val - 128) ** 2, 0) / dataArray.length);
-      setVolume(rms * 2); // Scale volume for effect
-      animationFrameRef.current = requestAnimationFrame(loop);
-    };
-    loop();
+        if (transcribedText) {
+          setCommand(transcribedText);
+          onCommand(transcribedText); // Pass the transcribed text to the parent component
+        }
+        setVoiceStatus('idle'); // Go back to idle after processing
+      }
+    } catch (error) {
+      console.error('Transcription request failed:', error);
+      setVoiceStatus('error');
+    }
   };
 
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = null;
+    }
+  };
+
+  const handleMicClick = async () => {
+    if (voiceStatus === 'recording') {
+      stopRecording();
+      return;
+    }
+
+    if (voiceStatus !== 'idle' && voiceStatus !== 'error') return;
+
+    setVoiceStatus('recording');
+    audioChunksRef.current = [];
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorderRef.current.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        await transcribeAudio(audioBlob);
+        stream.getTracks().forEach(track => track.stop()); // Stop the microphone access
+      };
+
+      mediaRecorderRef.current.start();
+
+      // Set a 10-second timeout to automatically stop recording
+      recordingTimeoutRef.current = setTimeout(() => {
+        console.log("Recording timed out after 10 seconds.");
+        stopRecording();
+      }, 10000);
+
+    } catch (error) {
+      console.error("Microphone access denied or error:", error);
+      setVoiceStatus('error');
+    }
+  };
+
+  const playAudio = async (audioArrayBuffer: ArrayBuffer) => {
+    if (!audioContextRef.current) return;
+    try {
+      const audioBuffer = await audioContextRef.current.decodeAudioData(audioArrayBuffer);
+      audioSourceRef.current = audioContextRef.current.createBufferSource();
+      audioSourceRef.current.buffer = audioBuffer;
+      audioSourceRef.current.connect(audioContextRef.current.destination);
+      audioSourceRef.current.start(0);
+
+      return new Promise<void>((resolve) => {
+        audioSourceRef.current!.onended = () => {
+          console.log("Audio playback ended.");
+          resolve();
+        };
+      });
+    } catch (error) {
+      console.error("Error playing audio:", error);
+      setVoiceStatus('idle'); // Reset status on playback error
+    }
+  };
+  
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (command.trim()) {
@@ -127,48 +164,53 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
     }
   };
 
-  const handlePlayAssistantResponse = async () => {
-    if (!response) return;
-    setAssistantStatus('playingResponse');
-    try {
-      const res = await fetch('http://localhost:8000/send-command/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: response, response_type: 'voice' }),
-      });
-      const audioArrayBuffer = await res.arrayBuffer();
-      const ctx = new AudioContext();
-      const buffer = await ctx.decodeAudioData(audioArrayBuffer);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start();
-      await new Promise<void>((resolve) => {
-        source.onended = () => resolve();
-      });
-    } catch (error) {
-      console.error('Error playing response:', error);
-    } finally {
-      setAssistantStatus('idle');
-    }
-  };
-
   const getMicButton = () => {
+    const statusMap = {
+      idle: { text: "Click to Speak", className: "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 hover:scale-110", icon: <Mic className="w-6 h-6 text-white" />, disabled: false },
+      recording: { text: "Recording... (Click to Stop)", className: "bg-red-500 hover:bg-red-600 animate-pulse", icon: <Square className="w-6 h-6 text-white" />, disabled: false },
+      processing: { text: "Processing...", className: "bg-yellow-500 hover:bg-yellow-600 animate-pulse", icon: <Mic className="w-6 h-6 text-white" />, disabled: true },
+      playingResponse: { text: "Playing response...", className: "bg-green-500 animate-pulse", icon: <Volume2 className="w-6 h-6 text-white" />, disabled: true },
+      error: { text: "Error! Click to retry.", className: "bg-gray-700", icon: <Mic className="w-6 h-6 text-white" />, disabled: false },
+    };
+    const currentStatus = statusMap[voiceStatus];
+
     return (
-      <div className="relative w-28 h-28 flex items-center justify-center">
-        <div className="absolute inset-0 flex items-center justify-center z-0">
-          {/* Pass showCircles prop to conditionally render circles */}
-          <VoiceVisualizer volume={volume} showCircles={showCircles} />
-        </div>
+      <div className="text-center">
         <Button
-          type="button"
-          disabled
-          className="z-10 h-16 w-16 rounded-full bg-gray-500"
+            type="button"
+            onClick={handleMicClick}
+            disabled={currentStatus.disabled || isLoading}
+            className={`h-16 w-16 rounded-full transition-all duration-300 ${currentStatus.className}`}
         >
-          <Mic className="w-6 h-6 text-white" />
+          {currentStatus.icon}
         </Button>
+        <p className="mt-4 text-sm text-gray-600 font-medium">{currentStatus.text}</p>
       </div>
     );
+  };
+
+  const handlePlayAssistantResponse = async () => {
+    if (response && voiceStatus !== 'playingResponse') {
+      setVoiceStatus('playingResponse');
+      try {
+        const ttsResponse = await fetch('http://localhost:8000/send-command/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: response, response_type: "voice" }),
+        });
+
+        if (!ttsResponse.ok) {
+          throw new Error(`HTTP error! status: ${ttsResponse.status}`);
+        }
+
+        const audioArrayBuffer = await ttsResponse.arrayBuffer();
+        await playAudio(audioArrayBuffer);
+      } catch (error) {
+        console.error("Error playing assistant response:", error);
+      } finally {
+        setVoiceStatus('idle');
+      }
+    }
   };
 
   return (
@@ -177,18 +219,12 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex gap-3">
             <Input
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
+              value={command} onChange={(e) => setCommand(e.target.value)}
               placeholder={translations.placeholder}
               className="h-14 text-lg border-2 border-gray-200 focus:border-blue-400 rounded-xl bg-white/90"
-              disabled={isLoading}
+              disabled={isLoading || voiceStatus === 'processing'}
             />
-            <Button
-              type="submit"
-              size="lg"
-              className="h-14 px-6 bg-blue-600 hover:bg-blue-700 rounded-xl"
-              disabled={isLoading}
-            >
+            <Button type="submit" size="lg" className="h-14 px-6 bg-blue-600 hover:bg-blue-700 rounded-xl" disabled={isLoading || voiceStatus === 'processing'}>
               <Send className="w-5 h-5" />
             </Button>
           </div>
@@ -208,36 +244,13 @@ export const CommandInterface: React.FC<CommandInterfaceProps> = ({
               variant="outline"
               size="sm"
               className="bg-white/80 hover:bg-white border-gray-300"
-              disabled={assistantStatus === 'playingResponse'}
+              disabled={voiceStatus === 'playingResponse' || voiceStatus === 'recording'}
             >
               <Volume2 className="w-4 h-4" />
             </Button>
           </div>
         </Card>
       )}
-    </div>
-  );
-};
-
-// 🎨 Visualizer Component
-const VoiceVisualizer: React.FC<{ volume: number; showCircles: boolean }> = ({ volume, showCircles }) => {
-  const scales = [1.0, 1.5, 2.0].map((base) => base + volume / 40);
-
-  return (
-    <div className="relative flex items-center justify-center">
-      {/* Conditionally render circles based on showCircles prop */}
-      {showCircles &&
-        scales.map((scale, i) => (
-          <div
-            key={i}
-            className="absolute rounded-full border-2 border-blue-400 transition-all duration-100 ease-out"
-            style={{
-              width: `${scale * 40}px`,
-              height: `${scale * 40}px`,
-              opacity: 0.3 + i * 0.2,
-            }}
-          />
-        ))}
     </div>
   );
 };
