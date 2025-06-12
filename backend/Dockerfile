@@ -20,13 +20,10 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip install python-multipart openai-whisper
-
 RUN python3 -c "import whisper; whisper.load_model('base')"
 
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+RUN python3 -c "from langchain_huggingface import HuggingFaceEmbeddings; HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2')"
 
-# Copy all backend code except excluded ones
 COPY . .
 
 # Expose FastAPI port
