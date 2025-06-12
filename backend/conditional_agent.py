@@ -29,6 +29,8 @@ evaluator_llm = ChatOpenAI(
     api_key=os.getenv("TOGETHER_API_KEY")
 )
 
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
 def fetch_headlines(api_key: str, query: str = "") -> List[str]:
     try:
         logger.debug(f"Fetching news headlines with query: '{query}'")
@@ -63,7 +65,6 @@ def fetch_weather(api_key: str, city_id: str = "418863") -> str:
 def build_vector_store(texts: List[str]):
     logger.debug(f"Building vector store for {len(texts)} documents")
     docs = [Document(page_content=text) for text in texts]
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     store = FAISS.from_documents(docs, embeddings)
     logger.info("Vector store created")
     return store
@@ -74,42 +75,59 @@ def get_similar(query: str, store, k: int = 5) -> List[str]:
     logger.info(f"Found {len(results)} similar documents")
     return results
 
-def evaluate_condition(description: str, news: List[str], weather: str) -> bool:
-    logger.debug(f"Evaluating condition: '{description}'")
+def evaluate_condition(weather_description: str, news_description: str, news: List[str], weather: str) -> tuple[bool, bool]:
+    logger.debug(f"Evaluating conditions: weather='{weather_description}', news='{news_description}'")
+
     messages = [
         SystemMessage(content="""
-You are an AI condition evaluator for a smart home.
-Given a condition like "if football news exists" or "if avg temp > 30",
-and current news and weather data, respond only with `True` or `False`.
-Do not explain anything.
+You are an AI condition evaluator for a smart home system.
+
+You will receive two independent conditions:
+1. A weather-related condition (e.g. "if temperature > 30°C")
+2. A news-related condition (e.g. "if football match is happening")
+
+You will also receive:
+- A list of recent news headlines
+- A weather forecast report
+
+❗Your task:
+Evaluate each condition separately.
+Return exactly two lines:
+- `WeatherCondition: True` or `WeatherCondition: False`
+- `NewsCondition: True` or `NewsCondition: False`
+
+⚠️ Do NOT explain anything.
 """),
-        HumanMessage(content=f"Condition: {description}\n\nNews:\n" +
-                     "\n".join(f"- {n}" for n in news) +
-                     f"\n\nWeather:\n{weather}")
+        HumanMessage(content=f"""Weather condition: {weather_description or 'none'}
+News condition: {news_description or 'none'}
+
+News headlines:
+{chr(10).join(f"- {n}" for n in news)}
+
+Weather forecast:
+{weather}
+""")
     ]
+
     try:
         reply = evaluator_llm.invoke(messages).content.strip().lower()
-        result = "true" in reply
-        logger.info(f"Condition evaluation result: {result}")
-        return result
+        logger.debug(f"Raw model reply:\n{reply}")
+
+        weather_result = "weathercondition: true" in reply
+        news_result = "newscondition: true" in reply
+
+        logger.info(f"Weather condition result: {weather_result}")
+        logger.info(f"News condition result: {news_result}")
+
+        return weather_result, news_result
     except Exception as e:
         logger.error(f"Error during condition evaluation: {e}")
-        return False
+        return False, False
 
-def handle_condition(description: str) -> bool:
-    logger.info(f"Handling condition: '{description}'")
-    news_api_key = os.getenv("NEWS_API_KEY")
-    weather_api_key = os.getenv("OPENWEATHER_API_KEY")
-
-    headlines = fetch_headlines(news_api_key)
-    if not headlines:
-        logger.warning("No headlines fetched, condition may be inaccurate")
+def handle_condition(weather_description: str, news_description: str, headlines, weather_report) -> tuple[bool, bool]:
+    logger.info(f"Handling condition — weather: '{weather_description}', news: '{news_description}'")
 
     vector_store = build_vector_store(headlines)
-    relevant_news = get_similar(description, vector_store)
+    relevant_news = get_similar(news_description, vector_store)
 
-    weather_report = fetch_weather(weather_api_key)
-    if weather_report == "No weather data available.":
-        logger.warning("Weather data unavailable, condition may be inaccurate")
-
-    return evaluate_condition(description, relevant_news, weather_report)
+    return evaluate_condition(weather_description, news_description, relevant_news, weather_report)

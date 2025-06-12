@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 from langchain.tools import tool
 
-from conditional_agent import handle_condition
+from conditional_agent import handle_condition, fetch_headlines, fetch_weather
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -27,15 +27,14 @@ logger = logging.getLogger(__name__)
 # === Tool Definitions ===
 
 @tool
-def control_tv(action: str, description: str = "", time_description: str = ""):
+def control_tv(action: str, weather_description: str = "", news_description: str = "", time_description: str = ""):
     """Turn on/off the TV with optional context like football news or weather."""
-
-    logger.info(f"✅ TV will be turned {action}. Reason: {description}. Time: {time_description}")
+    logger.info(f"✅ TV will be turned {action}. News: {news_description}. Weather: {weather_description}. Time: {time_description}")
 
 @tool
-def control_cooler(action: str, description: str = "", time_description: str = ""):
+def control_cooler(action: str, weather_description: str = "", news_description: str = "", time_description: str = ""):
     """Turn on/off the cooler based on weather logic."""
-    logger.info(f"✅ Cooler will be turned {action}. Condition: {description}. Time: {time_description}")
+    logger.info(f"✅ Cooler will be turned {action}. Weather: {weather_description}. News: {news_description}. Time: {time_description}")
 
 @tool
 def control_ac(room: str, action: str, time_description: str = ""):
@@ -94,34 +93,37 @@ chat_with_tools = llm.bind_tools(tools)
 
 def handle_user_request(prompt: str):
     messages = [
-        SystemMessage(content="""
-You are a smart home assistant.
+SystemMessage(content="""
+You are a smart home assistant. Your job is to turn user commands into tool calls for smart devices.
 
-When the user gives an instruction, your task is to extract and execute the correct function calls for controlling smart home devices.
+Tools you can use:
+- control_lamp(room, action, time_description)
+- control_ac(room, action, time_description)
+- control_cooler(action, weather_description, news_description, time_description)
+- control_tv(action, weather_description, news_description, time_description)
 
-✅ Always use tool calls when actions are required.
-✅ If the user gives multiple tasks, handle each one as a separate tool call.
-✅ Use the `description` field for any context, such as weather or football matches.
-✅ Use the `time_description` field for scheduled tasks like "in 2 hours" or "after 30 seconds".
-
-Available devices and their tools:
-
-- `control_lamp(room, action, time_description)`: Lamps in kitchen, bathroom, room1, room2.
-- `control_ac(room, action, time_description)`: AC in room1 or kitchen.
-- `control_cooler(action, description, time_description)`: Cooler on/off, typically based on hot weather (>30°C).
-- `control_tv(action, description, time_description)`: TV on/off, often triggered by events like football or news.
+Rules:
+- Use one tool call per action.
+- Set `weather_description` only for weather logic (e.g. "hot", "30°C", "avg > 50 in 5h").
+- Set `news_description` only for news/events (e.g. "football match", "war").
+- Use both if both apply.
+- Use `time_description` if there's a schedule (e.g. "in 2 hours").
 
 Examples:
+1. If it's hot, turn on the cooler.
+→ control_cooler(action='on', weather_description='hot', news_description='', time_description='now')
 
-1. If it's hot, turn on the cooler in 10 minutes.
-→ tool call: control_cooler(action='on', description='hot weather', time_description='in 10 minutes')
+2. Turn off the kitchen lamp in 1 hour.
+→ control_lamp(room='kitchen', action='off', time_description='in 1 hour')
 
-2. Turn off the kitchen lamp now.
-→ tool call: control_lamp(room='kitchen', action='off', time_description='now')
+3. If avg weather in next 5 hours is above 50, turn on the cooler.
+→ control_cooler(action='on', weather_description='avg > 50 in next 5 hours', news_description='', time_description='now')
 
-3. Turn on the TV if there's El Clasico, and also turn on bathroom lamp in 2 minutes.
-→ tool call 1: control_tv(action='on', description='El Clasico', time_description='now')
-→ tool call 2: control_lamp(room='bathroom', action='on', time_description='in 2 minutes')
+4. If there's important war news, turn on the TV.
+→ control_tv(action='on', weather_description='', news_description='important war news', time_description='now')
+
+5. If it's hot and there's a football match, turn on the cooler in 1 hour.
+→ control_cooler(action='on', weather_description='hot', news_description='football match', time_description='in 1 hour')
 """),
         HumanMessage(content=prompt)
     ]
@@ -130,6 +132,17 @@ Examples:
 
     response = chat_with_tools.invoke(messages)
     actions = []
+
+    news_api_key = os.getenv("NEWS_API_KEY")
+    weather_api_key = os.getenv("OPENWEATHER_API_KEY")
+
+    headlines = fetch_headlines(news_api_key)
+    if not headlines:
+        logger.warning("No headlines fetched, condition may be inaccurate")
+
+    weather_report = fetch_weather(weather_api_key)
+    if weather_report == "No weather data available.":
+        logger.warning("Weather data unavailable, condition may be inaccurate")
 
     for call in response.tool_calls:
         fn_name = call.get("name")
@@ -152,15 +165,29 @@ Examples:
             logger.warning(f"Could not parse time description '{time_str}', defaulting to now.")
             run_time = datetime.now()
 
-        desc = args.get("description", "")
-        condition_met = True
-        if desc and fn_name in {"control_tv", "control_cooler"}:
-            condition_met = handle_condition(desc)
-            logger.info(f"Condition '{desc}' evaluated to {condition_met} for {fn_name}")
+        weather_desc = args.get("weather_description", "")
+        news_desc = args.get("news_description", "")
 
-        if fn_name in {"control_tv", "control_cooler"} and not condition_met:
-            logger.info(f"Skipping {fn_name} due to unmet condition: {desc}")
-            continue
+        condition_met = [True, True]
+        if fn_name in {"control_tv", "control_cooler"}:
+            condition_met = handle_condition(weather_desc, news_desc, headlines, weather_report)
+            logger.info(f"Weather condition '{weather_desc}' evaluated to {condition_met[0]}")
+            logger.info(f"News condition '{news_desc}' evaluated to {condition_met[1]}")
+
+        if fn_name in {"control_tv", "control_cooler"}:
+            weather_required = bool(weather_desc.strip())
+            news_required = bool(news_desc.strip())
+
+            # Only check conditions if a condition string is provided
+            weather_ok, news_ok = condition_met
+
+            if (weather_required and not weather_ok) or (news_required and not news_ok):
+                desc = " or ".join(
+                    f"{'weather' if i == 0 else 'news'} condition '{weather_desc if i == 0 else news_desc}' not met"
+                    for i, met, req in zip(range(2), condition_met, [weather_required, news_required]) if req and not met
+                )
+                logger.info(f"Skipping {fn_name} due to unmet condition: {desc}")
+                continue
 
         logger.info(f"Scheduling {fn_name} at {run_time.isoformat()} with args: {args}")
 
