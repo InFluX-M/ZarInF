@@ -127,7 +127,13 @@ Weather forecast:
 def handle_condition(weather_description: str, news_description: str, headlines, weather_report) -> tuple[bool, bool]:
     logger.info(f"Handling condition — weather: '{weather_description}', news: '{news_description}'")
 
-    vector_store = build_vector_store(headlines)
-    relevant_news = get_similar(news_description, vector_store)
+    relevant_news = []
+    if len(news_description) > 0:
+        vector_store = build_vector_store(headlines)
+        relevant_news = get_similar(news_description, vector_store)
 
-    return evaluate_condition(weather_description, news_description, relevant_news, weather_report)
+    cond = True
+    if len(weather_report) > 0 or len(relevant_news) > 0:
+        cond = evaluate_condition(weather_description, news_description, relevant_news, weather_report)
+
+    return cond

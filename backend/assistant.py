@@ -1,10 +1,8 @@
-import pvporcupine
-import pyaudio
-import numpy as np
+import torch
+import torchaudio
 import whisper
 import torch
 import logging
-from time import time
 import asyncio
 from gtts import gTTS
 import io
@@ -24,11 +22,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class VoiceAssistant:
-    def __init__(self, access_key, keyword_paths, vad_model_name='silero_vad', whisper_model_name="base"):
+    def __init__(self, whisper_model_name="base"):
         logger.info("🔧 Initializing VoiceAssistant...")
 
         try:
-            self.vad_model, utils = torch.hub.load('snakers4/silero-vad', model=vad_model_name, trust_repo=True)
+            self.vad_model, utils = torch.hub.load('snakers4/silero-vad', 'silero_vad', trust_repo=True)
             (self.get_speech_timestamps, _, _, _, _) = utils
             logger.info("✅ VAD model loaded.")
         except Exception as e:
@@ -51,16 +49,27 @@ class VoiceAssistant:
             logger.exception(f"❌ Error during transcription: {e}")
             return ""
 
-    def close(self):
-        logger.info("🔌 Releasing audio and Porcupine resources.")
+    def vad_detect(self, audio_file):
+        logger.info("🧠 Running VAD detection...")
         try:
-            self.stream.stop_stream()
-            self.stream.close()
-            self.pa.terminate()
-            self.porcupine.delete()
-            logger.info("✅ Resources successfully released.")
+            wav, sr = torchaudio.load(audio_file)
+            print(sr)
+            assert sr == 16000, "Sample rate must be 16kHz for Silero VAD"
+
+            # Convert to mono if stereo
+            if wav.shape[0] > 1:
+                wav = wav.mean(dim=0, keepdim=True)
+                logger.info("🔉 Converted stereo to mono for VAD")
+
+            speech_timestamps = self.get_speech_timestamps(wav, self.vad_model, sampling_rate=sr)
+            logger.info(f"🔍 Detected {len(speech_timestamps)} speech segments")
+            return speech_timestamps
         except Exception as e:
-            logger.exception(f"❌ Error while closing audio resources: {e}")
+            logger.exception(f"❌ Error during VAD detection: {e}")
+            return []
+            
+    async def async_vad_detect(self, audio_file):
+        return await asyncio.to_thread(self.vad_detect, audio_file)
 
     def text_to_speech(self, text, lang='en'):
         tts = gTTS(text=text, lang=lang)
@@ -74,36 +83,3 @@ class VoiceAssistant:
     
     async def async_text_to_speech(self, text):
         return await asyncio.to_thread(self.text_to_speech, text)
-
-    def vad_detect(self, audio_np):
-        audio_tensor = torch.from_numpy(audio_np)
-        return self.get_speech_timestamps(audio_tensor, self.vad_model, sampling_rate=self.porcupine.sample_rate)
-
-    def normalize_audio(self, audio):
-        max_amp = np.max(np.abs(audio))
-        return audio / max_amp if max_amp > 0 else audio
-
-    def listen_for_command(self, max_silence_duration=2.0, min_speech_duration=2.0, max_command_duration=30.0):
-        command_frames, silence_start, speech_time = [], None, 0
-        start_time = time()
-        while True:
-            data = self.stream.read(self.porcupine.frame_length)
-            frame_int16 = np.frombuffer(data, dtype=np.int16)
-            command_frames.append(frame_int16)
-            audio_np = np.concatenate(command_frames).astype(np.float32) / 32768.0
-            speech_timestamps = self.vad_detect(audio_np)
-
-            if speech_timestamps:
-                silence_start = None
-                speech_time = sum([(ts['end'] - ts['start']) / self.porcupine.sample_rate for ts in speech_timestamps])
-            else:
-                if silence_start is None:
-                    silence_start = time()
-                elif time() - silence_start > max_silence_duration and speech_time >= min_speech_duration:
-                    break
-            if time() - start_time > max_command_duration:
-                break
-        return self.normalize_audio(audio_np)
-
-    async def async_listen_for_command(self):
-        return await asyncio.to_thread(self.listen_for_command)
