@@ -6,7 +6,7 @@ A modular smart home assistant powered by LLMs, speech processing, and voice con
 
 ## 🌟 Features
 
-- 🎙️ Wake word detection via Porcupine
+- 🎙️ Wake word detection via OpenWakeWord (or Porcupine)
 - 🧠 Voice Activity Detection (VAD) for clean transcription
 - 🔤 Whisper-based transcription
 - 💡 Device control (lamps, AC, TV, cooler)
@@ -22,14 +22,17 @@ A modular smart home assistant powered by LLMs, speech processing, and voice con
 ```
 .
 ├── backend/               # FastAPI backend
+│   └── Dockerfile
 ├── frontend/              # Streamlit UI
-├── .env.example           # Environment variable template
-└── README.md              # Project guide
+│   └── Dockerfile
+├── docker-compose.yml     # Multi-container setup
+├── .env.example           # Template for API keys
+└── README.md
 ```
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started (Without Docker)
 
 ### 1. Clone the repository
 
@@ -38,20 +41,23 @@ git clone https://github.com/yourusername/smart-home-assistant.git
 cd smart-home-assistant
 ```
 
-### 2. Add environment variables
+### 2. Configure API keys
 
-Copy the `.env.example` files into your frontend and backend directories:
+Copy the example `.env` files and fill in your actual API keys:
 
 ```bash
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
+touch backend/.env
+touch frontend/.env
 ```
 
-Edit the `.env` files to include your own API keys and paths.
+You’ll need:
+- `TOGETHER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`
+- `NEWS_API_KEY`, `OPENWEATHER_API_KEY`
+- `ACCESS_KEY_WAKE_WORD`, `KEYWORD_PATHS_WAKE_WORD`
 
 ---
 
-### 3. Backend setup
+### 3. Run Backend (FastAPI)
 
 ```bash
 cd backend
@@ -59,9 +65,7 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
----
-
-### 4. Frontend setup
+### 4. Run Frontend (Streamlit)
 
 ```bash
 cd ../frontend
@@ -71,47 +75,75 @@ streamlit run app.py
 
 ---
 
-## 🌐 API Endpoints
+## 🐳 Docker Setup (Recommended)
 
-| Endpoint               | Method | Description                      |
-|------------------------|--------|----------------------------------|
-| `/upload-audio/`       | POST   | Upload voice command             |
-| `/send-command/`       | POST   | Send text command                |
-| `/device-statuses/`    | GET    | Get status of all devices        |
+### 1. Build and start all services
+
+From the project root:
+
+```bash
+docker compose up --build
+```
+
+This will:
+- Build and run the **FastAPI backend** on port `8000`
+- Build and run the **Streamlit frontend** on port `8501`
+- Mount your audio devices for wake word detection
+
+### 2. Visit the app
+
+Open your browser and go to:
+
+```
+http://localhost:8501
+```
 
 ---
 
 ## 🔐 Required API Keys
 
-You’ll need the following keys in your `.env` files:
+You’ll need to set up a `.env` file in both `frontend/` and `backend/`:
 
 ### Backend `.env`
-- `TOGETHER_API_KEY`
-- `OPENAI_API_KEY`
-- `GROQ_API_KEY`
-- `NEWS_API_KEY`
-- `OPENWEATHER_API_KEY`
+```
+TOGETHER_API_KEY=...
+OPENAI_API_KEY=...
+GROQ_API_KEY=...
+NEWS_API_KEY=...
+OPENWEATHER_API_KEY=...
+```
 
 ### Frontend `.env`
-- `ACCESS_KEY_WAKE_WORD` – from Picovoice Console
-- `KEYWORD_PATHS_WAKE_WORD` – path to `.ppn` file (e.g., `Hey-Assistant_en_linux_v3_0_0.ppn`)
+```
+ACCESS_KEY_WAKE_WORD=...
+KEYWORD_PATHS_WAKE_WORD=Hey-Assistant_en_linux_v3_0_0.ppn
+```
 
-> ⚠️ Do **not** commit your `.env` files with real API keys.
+> ⚠️ Never commit `.env` files with real API keys.
 
 ---
 
-## 🛠 Dependencies
+## 🧪 API Endpoints
+
+| Endpoint               | Method | Description                      |
+|------------------------|--------|----------------------------------|
+| `/upload-audio/`       | POST   | Upload a voice command           |
+| `/send-command/`       | POST   | Send a text-based command        |
+| `/device-statuses/`    | GET    | Fetch all current device states  |
+
+---
+
+## 📦 Dependencies
 
 - Python 3.9+
-- FastAPI
-- Streamlit
-- PyTorch + Torchaudio
-- Picovoice Porcupine
-- Whisper (via API or local)
+- FastAPI, Streamlit
+- Whisper, OpenWakeWord
+- LangChain, HuggingFace, Together.ai
+- ALSA / PortAudio for voice I/O
 
 ---
 
-## 📌 Future Ideas
+## 📌 Future Features
 
 - Persian voice support
 - Raspberry Pi deployment
@@ -120,15 +152,17 @@ You’ll need the following keys in your `.env` files:
 
 ---
 
+## 👤 Authors
+
+Matin Azami  
+[GitHub](https://github.com/yourusername)
+
+Zahra Masoumi  
+[GitHub](https://github.com/asAlwaysZahra)
+
+---
+
 ## 📄 License
 
 MIT License
 
----
-
-## 👤 Authors
-
-Matin Azami  
-[GitHub](https://github.com/InFluX-M)
-Zahra Masoumi  
-[GitHub](https://github.com/asAlwaysZahra)
