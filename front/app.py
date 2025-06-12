@@ -3,6 +3,7 @@ import pvporcupine
 import sounddevice as sd
 import struct
 import requests
+from audio_recorder_streamlit import audio_recorder
 
 API_BASE = "http://localhost:8000"
 
@@ -72,7 +73,7 @@ else:
     # -----------------------
     # Tabs become available
     # -----------------------
-    tab1, tab2 = st.tabs(["💬 Text Command", "🎙️ Audio Upload"])
+    tab1, tab2, tab3 = st.tabs(["💬 Text Command", "🎙️ Audio Upload", "🎤 Record Audio"])
 
     # --- Text Command Tab ---
     with tab1:
@@ -122,4 +123,26 @@ else:
                     st.success("Response:")
                     st.write(result.get("response", "No response"))
 
-            
+    with tab3:
+        st.subheader("Record Your Command")
+        st.write("Click the button below and speak your command. Recording will stop automatically after pause.")
+
+        # Record audio in wav format (default)
+        audio_bytes = audio_recorder(pause_threshold=2.0, sample_rate=41000)  # your preferred params
+
+        if audio_bytes:
+            st.audio(audio_bytes, format="audio/wav")
+            if st.button("Submit Recorded Audio"):
+                with st.spinner("Uploading and processing recorded audio..."):
+                    files = {
+                        "file": ("recorded_command.wav", audio_bytes, "audio/wav")
+                    }
+                    params = {"response_type": "text"}  # Or let user select response type here if you want
+                    res = requests.post(f"{API_BASE}/upload-audio/", files=files, params=params)
+
+                    if res.status_code == 200:
+                        result = res.json()
+                        st.success("Response:")
+                        st.write(result.get("response", "No response"))
+                    else:
+                        st.error("Failed to get response from the server.")

@@ -28,23 +28,6 @@ class VoiceAssistant:
         logger.info("🔧 Initializing VoiceAssistant...")
 
         try:
-            self.porcupine = pvporcupine.create(
-                access_key=access_key,
-                keyword_paths=[keyword_paths]
-            )
-            self.pa = pyaudio.PyAudio()
-            self.stream = self.pa.open(
-                rate=self.porcupine.sample_rate,
-                channels=1,
-                format=pyaudio.paInt16,
-                input=True,
-                frames_per_buffer=self.porcupine.frame_length
-            )
-            logger.info("✅ Wake Word model loaded.")
-        except Exception as e:
-            logger.exception(f"❌ Error during Wake Word initialization: {e}")
-
-        try:
             self.vad_model, utils = torch.hub.load('snakers4/silero-vad', model=vad_model_name, trust_repo=True)
             (self.get_speech_timestamps, _, _, _, _) = utils
             logger.info("✅ VAD model loaded.")
@@ -92,11 +75,6 @@ class VoiceAssistant:
     async def async_text_to_speech(self, text):
         return await asyncio.to_thread(self.text_to_speech, text)
 
-    def listen_for_wake_word(self):
-        pcm = self.stream.read(self.porcupine.frame_length)
-        pcm_int16 = np.frombuffer(pcm, dtype=np.int16)
-        return self.porcupine.process(pcm_int16) >= 0
-
     def vad_detect(self, audio_np):
         audio_tensor = torch.from_numpy(audio_np)
         return self.get_speech_timestamps(audio_tensor, self.vad_model, sampling_rate=self.porcupine.sample_rate)
@@ -126,16 +104,6 @@ class VoiceAssistant:
             if time() - start_time > max_command_duration:
                 break
         return self.normalize_audio(audio_np)
-
-
-    async def detect_wake_word(self):
-        while True:
-            pcm = self.stream.read(self.porcupine.frame_length)
-            pcm_int16 = np.frombuffer(pcm, dtype=np.int16)
-            result = self.porcupine.process(pcm_int16)
-            if result >= 0:
-                return True
-            await asyncio.sleep(0)  # yield control back to event loop
 
     async def async_listen_for_command(self):
         return await asyncio.to_thread(self.listen_for_command)
