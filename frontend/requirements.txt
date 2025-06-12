@@ -1,0 +1,6 @@
+streamlit
+pvporcupine
+sounddevice
+python-dotenv
+requests
+audio-recorder-streamlit

@@ -1,23 +1,48 @@
-# Just use the standard version
-torch==2.7.1
-
-fastapi
-uvicorn[standard]
-python-dotenv
-pyaudio
-pvporcupine
+# agent.py
 numpy
-whisper
+python-dotenv
+langchain-openai
+langchain
+dateparser
+requests
+
+# assistant.py
+torch
+torchaudio
+openai-whisper
 gTTS
+python-dotenv
+
+# conditional_agent.py
 langchain
 langchain-openai
 langchain-community
 langchain-huggingface
+openai
 faiss-cpu
+sentence-transformers
 newsapi-python
-dateparser
-pydantic
-httpx
-aiofiles
-aiosqlite
 requests
+python-dotenv
+
+# main.py
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
+torch
+torchaudio
+aiofiles
+python-multipart 
+httpx
+
+# response_agent.py
+python-dotenv
+langchain
+langchain-openai
+openai
+together
+
+# scheduler.py and task_db.py
+aiosqlite
+python-dotenv

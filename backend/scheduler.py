@@ -1,5 +1,4 @@
 import asyncio
-import os
 import logging
 from datetime import datetime
 from agent import control_tv, control_cooler, control_ac, control_lamp, handle_user_request
