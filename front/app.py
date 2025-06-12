@@ -127,6 +127,9 @@ else:
         st.subheader("Record Your Command")
         st.write("Click the button below and speak your command. Recording will stop automatically after pause.")
 
+        # Response type selector like other tabs
+        response_type_record = st.radio("Response type", ["text", "voice"], horizontal=True, key="record_audio_radio")
+
         # Record audio in wav format (default)
         audio_bytes = audio_recorder(pause_threshold=2.0, sample_rate=41000)  # your preferred params
 
@@ -137,12 +140,16 @@ else:
                     files = {
                         "file": ("recorded_command.wav", audio_bytes, "audio/wav")
                     }
-                    params = {"response_type": "text"}  # Or let user select response type here if you want
+                    params = {"response_type": response_type_record}
                     res = requests.post(f"{API_BASE}/upload-audio/", files=files, params=params)
 
                     if res.status_code == 200:
-                        result = res.json()
-                        st.success("Response:")
-                        st.write(result.get("response", "No response"))
+                        if response_type_record == "voice":
+                            st.success("Audio response received:")
+                            st.audio(res.content, format="audio/mpeg")
+                        else:
+                            result = res.json()
+                            st.success("Response:")
+                            st.write(result.get("response", "No response"))
                     else:
                         st.error("Failed to get response from the server.")
