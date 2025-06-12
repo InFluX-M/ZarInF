@@ -67,6 +67,7 @@ def get_weather(description: str = "") -> str:
     """Return weather info matching the description query."""
     weather_report = _cached_weather_report
     logger.info(f"Fetching weather info for description: '{description}'")
+    return weather_report 
 
 # === Tool Map and Required Args ===
 
@@ -189,7 +190,6 @@ Examples:
             logger.warning(f"Unknown tool function requested: {fn_name}. Skipping.")
             continue
 
-        # Validate required arguments
         missing_args = [arg for arg in REQUIRED_ARGS[fn_name] if arg not in args]
         if missing_args:
             logger.warning(f"Missing required args for {fn_name}: {missing_args}. Skipping this call.")
@@ -205,6 +205,12 @@ Examples:
 
             result = TOOL_MAP[fn_name].invoke(input_str)
             logger.info(f"result {fn_name} immediately with args: {args} = {result}")
+            actions.append({
+                "function": fn_name,
+                "args": args,
+                "scheduled_for": "Now",
+                "result": result
+            })
             continue
 
         time_str = args.get("time_description", "")
@@ -244,6 +250,7 @@ Examples:
             "function": fn_name,
             "args": args,
             "scheduled_for": run_time,
+            "result": ''
         })
 
     return actions

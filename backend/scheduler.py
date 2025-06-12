@@ -3,6 +3,7 @@ import os
 import logging
 from datetime import datetime
 from agent import control_tv, control_cooler, control_ac, control_lamp, handle_user_request
+from response_agent import make_response
 from task_db import ScheduledTaskDBItem, get_due_tasks, delete_task, add_task, init_db, set_device_status, get_device_status
 from assistant import VoiceAssistant
 import aiosqlite
@@ -93,7 +94,6 @@ async def schedule_task(function_name: str, run_at: datetime, args=None, kwargs=
 async def handle_user_command(user_input: str):
     logger.info(f"🧠 Handling user input: '{user_input}'")
     commands = handle_user_request(user_input)
-    scheduled = []
     logger.info(f"Parsed commands: {commands}")
 
     for command in commands:
@@ -101,14 +101,24 @@ async def handle_user_command(user_input: str):
         args = command['args']
         run_at = command['scheduled_for']
 
-        action = args['action']
-        room = args['room'] if 'room' in args else ""    
+        if fn_name in ['get_news', 'get_weather']:
+            continue
 
         await schedule_task(fn_name, run_at, kwargs=args)
-        scheduled.append((fn_name, run_at, action, room))
         logger.info(f"📅 Scheduled: {fn_name} at {run_at} with args={args}")
 
-    return scheduled
+    logger.info(f"Commands: {commands}")
+    
+    for command in commands:
+        run_at = command['scheduled_for']
+        if isinstance(run_at, datetime):
+            command['scheduled_for'] = run_at.isoformat()
+        else:
+            command['scheduled_for'] = str(run_at)
+
+    response = make_response(commands)
+    logger.info(f"Response: {response}")
+    return response
 
 async def async_listen_for_command(assistant: VoiceAssistant):
     logger.info("👂 Listening for wake word...")

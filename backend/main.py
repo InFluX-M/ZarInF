@@ -72,19 +72,12 @@ async def upload_audio(file: UploadFile = File(...), response_type: str = "text"
     command = await asyncio.to_thread(app.state.assistant.transcribe_command, audio_path)
     logger.info(f"🗣️ Transcribed command: {command}")
 
-    scheduled = await handle_user_command(command)
-    logger.info(f"✅ Scheduled tasks: {scheduled}")
-
-    # Format response
-    TTS_text = "\nand".join(
-        f"{func} {room} {action} in {dt.strftime('%Y-%m-%d %H:%M:%S')}" if room
-        else f"{func} {action} in {dt.strftime('%Y-%m-%d %H:%M:%S')}"
-        for func, dt, action, room in scheduled
-    ).replace('_', ' ')
+    response = await handle_user_command(command)
+    logger.info(f"✅ Response: {response}")
 
     if response_type.lower() == "voice":
         logger.info("🔊 Returning audio response for upload-audio")
-        audio_stream = app.state.assistant.text_to_speech(TTS_text)
+        audio_stream = app.state.assistant.text_to_speech(response)
         if isinstance(audio_stream, bytes):
             audio_stream = io.BytesIO(audio_stream)
         audio_stream.seek(0)
@@ -97,26 +90,19 @@ async def upload_audio(file: UploadFile = File(...), response_type: str = "text"
         audio_stream.seek(0)
         return StreamingResponse(audio_stream, media_type="audio/mpeg")
 
-    return {"command": command, "scheduled_tasks": scheduled}
+    return {"response": response}
 
 # --- Send Command via JSON ---
 @app.post("/send-command/")
 async def send_command(request: CommandRequest):
     logger.info(f"✉️ Received text command: {request.command}")
     
-    scheduled = await handle_user_command(request.command)
-    logger.info(f"✅ Scheduled tasks: {scheduled}")
-
-    # Format response
-    TTS_text = "\nand".join(
-        f"{func} {room} {action} in {dt.strftime('%Y-%m-%d %H:%M:%S')}" if room
-        else f"{func} {action} in {dt.strftime('%Y-%m-%d %H:%M:%S')}"
-        for func, dt, action, room in scheduled
-    ).replace('_', ' ')
+    response = await handle_user_command(request.command)
+    logger.info(f"✅ Response: {response}")
 
     if request.response_type.lower() == "voice":
         logger.info("🔊 Returning audio response")
-        audio_stream = app.state.assistant.text_to_speech(TTS_text)
+        audio_stream = app.state.assistant.text_to_speech(response)
         if isinstance(audio_stream, bytes):
             audio_stream = io.BytesIO(audio_stream)
         audio_stream.seek(0)
@@ -130,7 +116,7 @@ async def send_command(request: CommandRequest):
         return StreamingResponse(audio_stream, media_type="audio/mpeg")
 
     logger.info("💬 Returning text response")
-    return {"command": request.command, "scheduled_tasks": scheduled}
+    return {"response": response}
 
 # --- Get Device Statuses ---
 @app.get("/device-statuses/")
