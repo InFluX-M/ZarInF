@@ -155,7 +155,7 @@ KEYWORD_PATHS_WAKE_WORD=Hey-Assistant_en_linux_v3_0_0.ppn
 ## 👤 Authors
 
 Matin Azami  
-[GitHub](https://github.com/yourusername)
+[GitHub](https://github.com/InFluX-M)
 
 Zahra Masoumi  
 [GitHub](https://github.com/asAlwaysZahra)
