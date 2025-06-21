@@ -27,21 +27,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+"""
 evaluator_llm = ChatOpenAI(
     model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
     base_url="https://api.together.xyz/v1",
     api_key=os.getenv("TOGETHER_API_KEY"),
     http_client=client
 )
-
 """
+
 evaluator_llm = ChatOpenAI(
     model="llama3-70b-8192",
     base_url="https://api.groq.com/openai/v1",
     api_key="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",
     http_client=client
 )
-"""
 
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 

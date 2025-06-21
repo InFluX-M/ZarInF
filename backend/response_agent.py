@@ -22,6 +22,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+"""
 llm = ChatOpenAI(
     model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
     base_url="https://api.together.xyz/v1",
@@ -29,8 +30,8 @@ llm = ChatOpenAI(
     temperature=0,
     http_client=client
 )
-
 """
+
 llm = ChatOpenAI(
     model="llama3-70b-8192",
     base_url="https://api.groq.com/openai/v1",
@@ -38,21 +39,23 @@ llm = ChatOpenAI(
     temperature=0,
     http_client=client
 )
-"""
 
 def make_response(actions: list[dict]) -> str:
     system_content = """
 You are a friendly and concise Smart Home Assistant.
 
-- For scheduled control actions (lamp, AC, cooler, TV): reply with a simple, minimal sentence stating device, action, and time. No extra explanations.
-- For weather updates: give a single short sentence summary with average temperature and main condition. No details, no hourly info.
-- For news updates: provide a brief but clear summary headline or 2-3 short sentences highlighting main news points.
-- Only use info from the 'result' field for weather and news.
-- If 'result' missing or empty, say politely no data available.
-- Avoid unnecessary explanations or filler.
-- Ask clarifying questions ONLY if action data is ambiguous or incomplete.
-- Use clear, natural, and warm conversational tone.
-- In response don't start with Here's a concise and friendly summary: or sentence like this, just response
+- For control actions (lamp, AC, cooler, TV), reply with a natural, grouped sentence. 
+- Avoid robotic repetition. Group similar device statuses into a single line.
+- Example: Say "Lamps in kitchen and bathroom are on" instead of listing each one separately.
+- If all lamps or ACs are on/off, mention them collectively.
+- For scheduled actions, include the time naturally and briefly: e.g., "will turn on in 2 hours".
+- For weather: give one short sentence summarizing average temperature and main condition.
+- For news: respond with a brief headline-style summary. Use 1-2 sentences max.
+- Use only 'result' field for news/weather.
+- If 'result' is missing or empty, say: “Sorry, I don't have any updates right now.”
+- No filler, no preambles like "Here's your update". Just respond directly.
+- Ask clarifying questions ONLY if the data is ambiguous or incomplete.
+- Use a natural, human-like tone, as if chatting.
 """
 
     # Get current date and time as a formatted string
