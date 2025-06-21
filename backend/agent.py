@@ -4,14 +4,16 @@ import logging
 from datetime import datetime
 import dateparser
 
-from langchain_openai import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 from langchain.tools import tool
+from langchain_openai import ChatOpenAI
 
 from conditional_agent import handle_condition, fetch_headlines, fetch_weather, build_vector_store, get_similar
 
 from dotenv import load_dotenv
 load_dotenv()
+
+import httpx
 
 # Setup logger
 logging.basicConfig(
@@ -107,11 +109,23 @@ def parse_time_description(text: str, base: datetime = None) -> datetime | None:
 
 # === LLM Setup ===
 
+client = httpx.Client(proxies="socks5://127.0.0.1:2080")
+
 llm = ChatOpenAI(
     model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
     base_url="https://api.together.xyz/v1",
-    api_key=os.getenv("TOGETHER_API_KEY")
+    api_key=os.getenv("TOGETHER_API_KEY"),
+    http_client=client
 )
+
+"""
+llm = ChatOpenAI(
+    model="llama3-70b-8192",
+    base_url="https://api.groq.com/openai/v1",
+    api_key="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",
+    http_client=client
+)
+"""
 
 tools = list(TOOL_MAP.values())
 chat_with_tools = llm.bind_tools(tools)
@@ -149,68 +163,12 @@ Rules:
 - Always match your responses and tool calls to the exact valid values above.
 
 Examples:
-Examples:
 
 1. If it's hot, turn on the cooler.
 → control_cooler(action='on', weather_description='hot', news_description='', time_description='now')
 
 2. Turn off the kitchen lamp in 1 hour.
 → control_lamp(room='kitchen', action='off', time_description='in 1 hour')
-
-3. If avg weather in next 5 hours is above 50, turn on the cooler.
-→ control_cooler(action='on', weather_description='avg > 50 in next 5 hours', news_description='', time_description='now')
-
-4. If there's important war news, turn on the TV.
-→ control_tv(action='on', weather_description='', news_description='important war news', time_description='now')
-
-5. If it's hot and there's a football match, turn on the cooler in 1 hour.
-→ control_cooler(action='on', weather_description='hot', news_description='football match', time_description='in 1 hour')
-
-6. Get latest news about technology.
-→ get_news(filter='technology')
-
-7. Get avg weather in next 4 hours.
-→ get_weather(description='avg weather in next 4 hours')
-
-8. Turn on all lamps and the cooler now.
-→ control_lamp(room='kitchen', action='on', time_description='now')
-→ control_lamp(room='bathroom', action='on', time_description='now')
-→ control_lamp(room='room1', action='on', time_description='now')
-→ control_lamp(room='room2', action='on', time_description='now')
-→ control_cooler(action='on', weather_description='', news_description='', time_description='now')
-
-9. Turn off everything at 3 PM.
-→ control_lamp(room='kitchen', action='off', time_description='at 3 PM')
-→ control_lamp(room='bathroom', action='off', time_description='at 3 PM')
-→ control_lamp(room='room1', action='off', time_description='at 3 PM')
-→ control_lamp(room='room2', action='off', time_description='at 3 PM')
-→ control_ac(room='room1', action='off', time_description='at 3 PM')
-→ control_ac(room='kitchen', action='off', time_description='at 3 PM')
-→ control_cooler(action='off', weather_description='', news_description='', time_description='at 3 PM')
-→ control_tv(action='off', weather_description='', news_description='', time_description='at 3 PM')
-
-10. Please turn on the AC in the living room.
-→ Sorry, there is no AC in the living room. Available rooms for AC are: room1 and kitchen.
-
-11. Turn on the AC in kitchen and the lamp in bathroom.
-→ control_ac(room='kitchen', action='on', time_description='now')
-→ control_lamp(room='bathroom', action='on', time_description='now')
-
-12. It's dark in the kitchen.
-→ control_lamp(room='kitchen', action='on', time_description='now')
-
-13. Play music in the kitchen.
-→ Sorry, I can’t play music. I only control devices (AC, lamps, TV, cooler) and get news/weather.
-
-14. Reset all devices to off now.
-→ control_lamp(room='kitchen', action='off', time_description='now')
-→ control_lamp(room='bathroom', action='off', time_description='now')
-→ control_lamp(room='room1', action='off', time_description='now')
-→ control_lamp(room='room2', action='off', time_description='now')
-→ control_ac(room='room1', action='off', time_description='now')
-→ control_ac(room='kitchen', action='off', time_description='now')
-→ control_cooler(action='off', weather_description='', news_description='', time_description='now')
-→ control_tv(action='off', weather_description='', news_description='', time_description='now')
 """),
         HumanMessage(content=prompt)
     ]

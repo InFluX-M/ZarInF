@@ -5,9 +5,12 @@ from datetime import datetime
 
 from langchain_openai import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
 load_dotenv()
+
+import httpx
+client = httpx.Client(proxies="socks5://127.0.0.1:2080")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,8 +26,19 @@ llm = ChatOpenAI(
     model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
     base_url="https://api.together.xyz/v1",
     api_key=os.getenv("TOGETHER_API_KEY"),
-    temperature=0
+    temperature=0,
+    http_client=client
 )
+
+"""
+llm = ChatOpenAI(
+    model="llama3-70b-8192",
+    base_url="https://api.groq.com/openai/v1",
+    api_key="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",
+    temperature=0,
+    http_client=client
+)
+"""
 
 def make_response(actions: list[dict]) -> str:
     system_content = """
@@ -38,6 +52,7 @@ You are a friendly and concise Smart Home Assistant.
 - Avoid unnecessary explanations or filler.
 - Ask clarifying questions ONLY if action data is ambiguous or incomplete.
 - Use clear, natural, and warm conversational tone.
+- In response don't start with Here's a concise and friendly summary: or sentence like this, just response
 """
 
     # Get current date and time as a formatted string
