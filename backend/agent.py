@@ -13,8 +13,6 @@ from conditional_agent import handle_condition, fetch_headlines, fetch_weather, 
 from dotenv import load_dotenv
 load_dotenv()
 
-import httpx
-
 # Setup logger
 logging.basicConfig(
     level=logging.INFO,
@@ -109,27 +107,22 @@ def parse_time_description(text: str, base: datetime = None) -> datetime | None:
 
 # === LLM Setup ===
 
-client = httpx.Client(proxies="socks5://127.0.0.1:2080")
-
-"""
-llm = ChatOpenAI(
+tg_llm  = ChatOpenAI(
     model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
     base_url="https://api.together.xyz/v1",
     api_key=os.getenv("TOGETHER_API_KEY"),
-    http_client=client
+    openai_proxy=os.getenv('OPENAI_PROXY')
 )
-"""
 
-llm = ChatOpenAI(
+groq_llm = ChatOpenAI(
     model="llama3-70b-8192",
     base_url="https://api.groq.com/openai/v1",
-    api_key="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",
-    http_client=client
+    api_key=os.getenv("GROQ_API_KEY"),
+    openai_proxy=os.getenv('OPENAI_PROXY')
 )
 
-
 tools = list(TOOL_MAP.values())
-chat_with_tools = llm.bind_tools(tools)
+chat_with_tools = (groq_llm if os.getenv('API') == 'GROQ' else tg_llm).bind_tools(tools)
 
 # === Main User Request Handler ===
 

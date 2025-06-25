@@ -9,12 +9,11 @@ from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from newsapi import NewsApiClient
 from sentence_transformers import SentenceTransformer
+from requests.adapters import HTTPAdapter
+from requests.sessions import Session
 
 from dotenv import load_dotenv
 load_dotenv()
-
-import httpx
-client = httpx.Client(proxies="socks5://127.0.0.1:2080")
 
 # Setup logger
 logging.basicConfig(
@@ -27,32 +26,49 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-"""
-evaluator_llm = ChatOpenAI(
+proxies = {
+    "http": "socks5h://127.0.0.1:2080",
+    "https": "socks5h://127.0.0.1:2080"
+}
+
+
+tg_llm  = ChatOpenAI(
     model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
     base_url="https://api.together.xyz/v1",
     api_key=os.getenv("TOGETHER_API_KEY"),
-    http_client=client
+    openai_proxy=os.getenv('OPENAI_PROXY')
 )
-"""
 
-evaluator_llm = ChatOpenAI(
+groq_llm = ChatOpenAI(
     model="llama3-70b-8192",
     base_url="https://api.groq.com/openai/v1",
-    api_key="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",
-    http_client=client
+    api_key=os.getenv("GROQ_API_KEY"),
+    openai_proxy=os.getenv('OPENAI_PROXY')
 )
 
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+embeddings = HuggingFaceEmbeddings(model_name="./models/local_all-MiniLM-L6-v2")
 
 def fetch_headlines(api_key: str, query: str = "") -> List[str]:
     try:
         logger.debug(f"Fetching news headlines with query: '{query}'")
+
+        # Patch requests to use SOCKS5 proxy
+        session = requests.Session()
+        session.proxies = {
+            'http': 'socks5h://127.0.0.1:2080',
+            'https': 'socks5h://127.0.0.1:2080'
+        }
+
+        # Monkey-patch NewsApiClient's internal session
         client = NewsApiClient(api_key=api_key)
+        client.session = session
+
         articles = client.get_top_headlines(language="en", page_size=50, q=query or None).get("articles", [])
         headlines = [a["title"] for a in articles if a.get("title")]
+
         logger.info(f"Fetched {len(headlines)} headlines")
         return headlines
+
     except Exception as e:
         logger.error(f"Failed to fetch headlines: {e}")
         return []
@@ -62,7 +78,7 @@ def fetch_weather(api_key: str, city_id: str = "418863") -> str:
         logger.debug(f"Fetching weather for city_id={city_id}")
         res = requests.get("http://api.openweathermap.org/data/2.5/forecast", params={
             "id": city_id, "appid": api_key, "units": "metric"
-        }).json()
+        }, proxies=proxies, timeout=10).json()
         if "list" not in res:
             logger.warning("No weather data found in response")
             return "No weather data available."
@@ -124,7 +140,7 @@ Weather forecast:
     ]
 
     try:
-        reply = evaluator_llm.invoke(messages).content.strip().lower()
+        reply = (groq_llm if os.getenv('API') == 'GROQ' else tg_llm).invoke(messages).content.strip().lower()
         logger.debug(f"Raw model reply:\n{reply}")
 
         weather_result = "weathercondition: true" in reply
