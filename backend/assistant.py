@@ -6,6 +6,8 @@ import logging
 import asyncio
 from gtts import gTTS
 import io
+import requests
+from unittest import mock
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -72,11 +74,20 @@ class VoiceAssistant:
         return await asyncio.to_thread(self.vad_detect, audio_file)
 
     def text_to_speech(self, text, lang='en'):
-        tts = gTTS(text=text, lang=lang)
-        audio_bytes = io.BytesIO()
-        tts.write_to_fp(audio_bytes)
-        audio_bytes.seek(0)
-        return audio_bytes  
+        # Create a session with proxy
+        session = requests.Session()
+        session.proxies = {
+            'http': 'socks5h://127.0.0.1:2080',
+            'https': 'socks5h://127.0.0.1:2080'
+        }
+
+        # Patch `requests.get` inside gTTS to use this session
+        with mock.patch('requests.get', session.get):
+            tts = gTTS(text=text, lang=lang)
+            audio_bytes = io.BytesIO()
+            tts.write_to_fp(audio_bytes)
+            audio_bytes.seek(0)
+            return audio_bytes
 
     async def async_transcribe_command(self, audio):
         return await asyncio.to_thread(self.transcribe_command, audio)

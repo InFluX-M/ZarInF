@@ -122,7 +122,7 @@ groq_llm = ChatOpenAI(
 )
 
 tools = list(TOOL_MAP.values())
-chat_with_tools = (groq_llm if os.getenv('API') == 'GROQ' else tg_llm).bind_tools(tools)
+chat_with_tools = (groq_llm if os.getenv('API_AGENT') == 'GROQ' else tg_llm).bind_tools(tools)
 
 # === Main User Request Handler ===
 

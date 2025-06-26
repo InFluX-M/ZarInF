@@ -43,17 +43,28 @@ cd smart-home-assistant
 
 ### 2. Configure API keys
 
-Copy the example `.env` files and fill in your actual API keys:
+```env
+# === LLM Providers ===
+TOGETHER_API_KEY=your_together_api_key           # Get from https://www.together.ai/api-keys
+GROQ_API_KEY=your_groq_api_key                   # Get from https://console.groq.com/
+OPENAI_API_KEY=your_openai_api_key               # Get from https://platform.openai.com/account/api-keys
 
-```bash
-touch backend/.env
-touch frontend/.env
+# === External APIs ===
+OPENWEATHER_API_KEY=your_openweather_api_key     # Get from https://openweathermap.org/api
+NEWS_API_KEY=your_newsapi_key                    # Get from https://newsapi.org/
+
+# === Wake Word Detection (Porcupine) ===
+ACCESS_KEY_WAKE_WORD=your_picovoice_access_key   # Get from https://console.picovoice.ai/
+KEYWORD_PATHS_WAKE_WORD=keywords/kitchen.ppn     # Path to .ppn keyword file(s)
+
+# === LLM Backend Selection ===
+API_AGENT=GROQ                                   # Choose: TOGETHER or GROQ
+API_COND=GROQ                                    # Choose: TOGETHER or GROQ
+API_RES=GROQ                                     # Choose: TOGETHER or GROQ
+
+# === Optional Proxy Configuration ===
+OPENAI_PROXY=socks5://127.0.0.1:2080             # Optional proxy, or leave blank
 ```
-
-You’ll need:
-- `TOGETHER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`
-- `NEWS_API_KEY`, `OPENWEATHER_API_KEY`
-- `ACCESS_KEY_WAKE_WORD`, `KEYWORD_PATHS_WAKE_WORD`
 
 ---
 

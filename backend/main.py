@@ -100,12 +100,12 @@ async def upload_audio(file: UploadFile = File(...), response_type: str = "text"
     command = await asyncio.to_thread(app.state.assistant.transcribe_command, vad_audio_path)
     logger.info(f"🗣️ Transcribed command: {command}")
 
-    response = await handle_user_command(command)
+    response = await handle_user_command(command.lower())
     logger.info(f"✅ Response: {response}")
 
     if response_type.lower() == "voice":
         logger.info("🔊 Returning audio response")
-        audio_stream = await app.state.assistant.async_text_to_speech(response)
+        audio_stream = await app.state.assistant.text_to_speech(response)
         audio_stream.seek(0)
 
         output_path = os.path.join("output", "output.mp3")
@@ -124,7 +124,7 @@ async def upload_audio(file: UploadFile = File(...), response_type: str = "text"
 async def send_command(request: CommandRequest):
     logger.info(f"✉️ Received text command: {request.command}")
     
-    response = await handle_user_command(request.command)
+    response = await handle_user_command(request.command.lower())
     logger.info(f"✅ Response: {response}")
 
     if request.response_type.lower() == "voice":

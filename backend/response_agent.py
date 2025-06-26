@@ -99,7 +99,7 @@ Now generate the response.
         HumanMessage(content=prompt)
     ]
 
-    response = (groq_llm if os.getenv('API') == 'GROQ' else tg_llm).invoke(messages)
-    logger.info(f"LLM response with {os.getenv('API')}: {response.content}")
+    response = (groq_llm if os.getenv('API_RES') == 'GROQ' else tg_llm).invoke(messages)
+    logger.info(f"LLM response with {os.getenv('API_AGENT')}: {response.content}")
 
     return response.content

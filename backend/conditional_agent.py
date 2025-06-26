@@ -8,9 +8,6 @@ from langchain_openai import ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from newsapi import NewsApiClient
-from sentence_transformers import SentenceTransformer
-from requests.adapters import HTTPAdapter
-from requests.sessions import Session
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -46,7 +43,7 @@ groq_llm = ChatOpenAI(
     openai_proxy=os.getenv('OPENAI_PROXY')
 )
 
-embeddings = HuggingFaceEmbeddings(model_name="./models/local_all-MiniLM-L6-v2")
+embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 def fetch_headlines(api_key: str, query: str = "") -> List[str]:
     try:
@@ -140,7 +137,7 @@ Weather forecast:
     ]
 
     try:
-        reply = (groq_llm if os.getenv('API') == 'GROQ' else tg_llm).invoke(messages).content.strip().lower()
+        reply = (groq_llm if os.getenv('API_COND') == 'GROQ' else tg_llm).invoke(messages).content.strip().lower()
         logger.debug(f"Raw model reply:\n{reply}")
 
         weather_result = "weathercondition: true" in reply
